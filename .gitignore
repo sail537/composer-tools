@@ -1,0 +1,15 @@
+.DS_Store
+*.log
+
+# 构建产物（app、可执行文件、符号）
+tools/build/
+tools/mac-shell-poc/build/
+**/*.app/
+**/*.dSYM/
+
+# Xcode
+DerivedData/
+xcuserdata/
+
+# Node
+node_modules/

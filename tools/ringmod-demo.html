@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>环形调制计算器</title>
+<style>
+  :root {
+    --ink: #1c1c1e;
+    --muted: #6b6b70;
+    --line: #d9d9de;
+    --bg: #f6f6f8;
+    --accent: #0a6cff;
+    --accent-soft: #e8f0ff;
+    --carrier: #0a6cff;
+    --modulator: #1a9e8f;
+    --sum: #d2691e;
+    --diff: #8e44ad;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 26px 20px 48px;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 18px; }
+  h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px 16px; margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+  .pickers { display: flex; gap: 8px; }
+  select {
+    font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  .readout { margin-top: 8px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .readout b { color: var(--ink); font-weight: 600; }
+  button {
+    font: inherit; font-size: 13.5px; padding: 8px 13px; border-radius: 8px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  button:hover { border-color: #b9b9c0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #0a5ede; }
+  button.ghost { color: var(--muted); }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .controls + .controls { margin-top: 11px; }
+  .inline { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ededf1; font-size: 14px; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .3px; }
+  tr.out td { background: var(--accent-soft); }
+  tr.out td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  tr:last-child td { border-bottom: none; }
+  .dev { color: var(--muted); }
+  .dev.off { color: #b26a00; font-weight: 600; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .status { font-size: 12.5px; color: #b26a00; }
+  svg { display: block; width: 100%; height: auto; }
+  input[type=range] { width: 120px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>环形调制计算器</h1>
+
+  <section class="card">
+    <h2>律制</h2>
+    <div class="row">
+      <div class="field">
+        <label>等分</label>
+        <select id="edo"></select>
+      </div>
+      <div class="field">
+        <label>网格</label>
+        <div class="readout" id="edo-read"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>输入</h2>
+    <div class="row">
+      <div class="field">
+        <label><span class="dot" style="background:var(--carrier)"></span>载音</label>
+        <div class="pickers">
+          <select id="c-group"></select>
+          <select id="c-note"></select>
+        </div>
+        <div class="readout" id="c-read"></div>
+      </div>
+      <div class="field">
+        <label><span class="dot" style="background:var(--modulator)"></span>调制音</label>
+        <div class="pickers">
+          <select id="m-group"></select>
+          <select id="m-note"></select>
+        </div>
+        <div class="readout" id="m-read"></div>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <div class="pickers">
+          <button data-preset="book">392 + 207.65</button>
+          <button data-preset="user">196 + 415.30</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>结果</h2>
+    <table>
+      <thead>
+        <tr><th>类型</th><th>音名</th><th>频率 (Hz)</th><th>音分</th><th>偏差</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="card">
+    <h2>频率轴</h2>
+    <div id="chart"></div>
+    <div class="controls" style="margin-top:12px">
+      <button id="export-svg">导出 SVG</button>
+      <button id="export-png">导出 PNG</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>试听</h2>
+    <div class="controls">
+      <button id="play-dyad" class="primary">▶ 载音 + 调制音</button>
+      <button id="play-ring" class="primary">▶ 环形调制</button>
+      <button id="play-sumdiff" class="primary">▶ 和音 + 差音</button>
+      <button id="stop" class="ghost">■ 停止</button>
+      <span class="inline" id="audio-status">—</span>
+    </div>
+    <div class="controls">
+      <label class="inline">音量 <input type="range" id="vol" min="0" max="50" value="15"><span id="vol-read">15%</span></label>
+      <label class="inline"><input type="checkbox" id="snap"> 吸附到当前律制</label>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ---------- 律制：与 OM 的 EDO 菜单一致 ---------- */
+const EDO_LIST = [
+  [5, '5 EDO'], [6, '6 EDO (1)'], [7, '7 EDO'], [8, '8 EDO'], [9, '9 EDO'], [10, '10 EDO'],
+  [12, '12 EDO (1/2)'], [14, '14 EDO'], [15, '15 EDO'], [16, '16 EDO'], [17, '17 EDO'],
+  [18, '18 EDO (1/3)'], [19, '19 EDO'], [22, '22 EDO'], [24, '24 EDO (1/4)'], [30, '30 EDO (1/5)'],
+  [31, '31 EDO'], [36, '36 EDO (1/6)'], [41, '41 EDO'], [42, '42 EDO (1/7)'], [48, '48 EDO (1/8)'],
+  [53, '53 EDO'], [60, '60 EDO (1/10)'], [72, '72 EDO (1/12)'], [84, '84 EDO (1/14)'], [96, '96 EDO (1/16)']
+];
+const GROUPS = [
+  [-3, '大字二组'], [-2, '大字一组'], [-1, '大字组'], [0, '小字组'],
+  [1, '小字一组'], [2, '小字二组'], [3, '小字三组'], [4, '小字四组'], [5, '小字五组']
+];
+const NAMES = ['c','c♯','d','d♯','e','f','f♯','g','g♯','a','a♯','b'];
+const SUP = {1:'¹', 2:'²', 3:'³', 4:'⁴', 5:'⁵'};
+const SUB = {1:'₁', 2:'₂', 3:'₃', 4:'₄', 5:'₅'};
+
+function noteName(group, idx) {
+  const base = NAMES[((idx % 12) + 12) % 12];
+  if (group < 0) {
+    const up = base.toUpperCase();
+    return group === -1 ? up : up + (SUB[-group - 1] || '');
+  }
+  return base + (group === 0 ? '' : (SUP[group] || ''));
+}
+const mc2f = mc => 440 * Math.pow(2, (mc - 6900) / 1200);
+/* Lisp 的 round（四舍六入五成双），与 OM 的 f->mc 一致 */
+function lispRound(x) {
+  const fl = Math.floor(x), d = x - fl;
+  if (d > 0.5) return fl + 1;
+  if (d < 0.5) return fl;
+  return (fl % 2 === 0) ? fl : fl + 1;
+}
+/* 0 Hz / 非有限值没有对应的音分位置；返回 null，由调用方显示成“直流” */
+const f2mc = f => (Number.isFinite(f) && f > 0)
+  ? lispRound(6900 + 1200 * Math.log2(Math.abs(f) / 440))
+  : null;
+
+let edo = 12;
+const step = () => 1200 / edo;
+
+/* 网格点：group + 组内序号 → 音分 */
+const gridMc = (group, idx) => 6000 + 1200 * (group - 1) + step() * idx;
+
+/* 网格点 → 音名（半音名 + 与半音的偏离） */
+function gridName(group, idx) {
+  const cents = step() * idx;
+  let semi = Math.floor(cents / 100 + 1e-9);
+  let off = cents - semi * 100;
+  if (off > 50 + 1e-9) { semi += 1; off -= 100; }
+  const base = noteName(group + Math.floor(semi / 12), semi % 12);
+  if (Math.abs(off) < 0.5) return base;
+  const a = Math.round(Math.abs(off) * 10) / 10;
+  return base + (off > 0 ? ' +' : ' −') + a;
+}
+
+/* 音分 → 当前律制的网格与音名 */
+function snapToGrid(mc) {
+  if (!Number.isFinite(mc)) return null;
+  const k = Math.round((mc - 6000) / step());
+  const snapped = 6000 + k * step();
+  const g = Math.floor(k / edo);
+  const idx = k - g * edo;
+  return { mc: snapped, dev: mc - snapped, name: gridName(g + 1, idx) };
+}
+
+/* ---------- 计算 ---------- */
+/* 状态只用绝对音高（音分），组别/音名下拉框是它的显示 */
+let cMc = 6700, mMc = 5600;
+
+/* 音分 → 下拉框位置（组别 + 组内序号） */
+function gridPos(mc) {
+  const k = Math.round((mc - 6000) / step());
+  const g = Math.floor(k / edo);
+  return { group: g + 1, idx: k - g * edo, k };
+}
+const gridNameOf = mc => { const p = gridPos(mc); return gridName(p.group, p.idx); };
+
+function compute() {
+  const f1 = mc2f(cMc), f2 = mc2f(mMc);
+  const sumF = f1 + f2;
+  const diffF = Math.abs(f1 - f2);
+  const sumMc = f2mc(sumF);
+  /* 差频小于 0.01 Hz 视为直流（听觉上就是同音），不映射到音分位置 */
+  const diffMc = diffF >= 0.01 ? f2mc(diffF) : null;
+  return {
+    c: { mc: cMc, f: f1, name: gridNameOf(cMc) },
+    m: { mc: mMc, f: f2, name: gridNameOf(mMc) },
+    sum: { mc: sumMc, f: sumF, snap: snapToGrid(sumMc) },
+    diff: { mc: diffMc, f: diffF, snap: snapToGrid(diffMc) }
+  };
+}
+
+/* ---------- 控件 ---------- */
+const $ = id => document.getElementById(id);
+const edoSel = $('edo'), cGroupSel = $('c-group'), mGroupSel = $('m-group');
+const cNoteSel = $('c-note'), mNoteSel = $('m-note');
+const rowsEl = $('rows'), statusEl = $('status');
+
+for (const [n, label] of EDO_LIST) {
+  const o = document.createElement('option');
+  o.value = n; o.textContent = label;
+  edoSel.appendChild(o);
+}
+for (const [g, label] of GROUPS) {
+  for (const sel of [cGroupSel, mGroupSel]) {
+    const o = document.createElement('option');
+    o.value = g; o.textContent = label;
+    sel.appendChild(o);
+  }
+}
+
+function fillNotes() {
+  const pc = gridPos(cMc), pm = gridPos(mMc);
+  for (const [sel, idx] of [[cNoteSel, pc.idx], [mNoteSel, pm.idx]]) {
+    sel.innerHTML = '';
+    for (let i = 0; i < edo; i++) {
+      const o = document.createElement('option');
+      o.value = i;
+      o.textContent = gridName(1, i);       // 用同一组内的音名做标签
+      sel.appendChild(o);
+    }
+    sel.value = Math.min(idx, edo - 1);
+  }
+}
+
+function fmtDev(dev) {
+  if (Math.abs(dev) < 0.05) return '0';
+  const a = Math.round(Math.abs(dev) * 10) / 10;
+  return (dev > 0 ? '+' : '−') + a;
+}
+
+function row(label, cls, color, mc, f, name, dev) {
+  const tr = document.createElement('tr');
+  if (cls) tr.className = cls;
+  const hasMc = Number.isFinite(mc);
+  const mcTxt = hasMc ? (Math.abs(mc - Math.round(mc)) < 0.05 ? Math.round(mc) : mc.toFixed(1)) : '—';
+  const hasDev = Number.isFinite(dev);
+  tr.innerHTML = `<td><span class="dot" style="background:${color}"></span>${label}</td>`
+               + `<td>${name || '—'}</td><td>${Number.isFinite(f) ? f.toFixed(2) : '—'}</td><td>${mcTxt}</td>`
+               + `<td class="dev${hasDev && Math.abs(dev) >= 0.5 ? ' off' : ''}">${hasDev ? fmtDev(dev) : '—'}</td>`;
+  return tr;
+}
+
+function render() {
+  cMc = snapToGrid(cMc).mc;      // 保持与当前律制网格一致
+  mMc = snapToGrid(mMc).mc;
+  const r = compute();
+  const pc = gridPos(cMc), pm = gridPos(mMc);
+  edoSel.value = edo;
+  cGroupSel.value = pc.group; cNoteSel.value = pc.idx;
+  mGroupSel.value = pm.group; mNoteSel.value = pm.idx;
+  $('edo-read').innerHTML = `<b>${Math.round(step() * 10) / 10} 音分</b>`;
+  $('c-read').innerHTML = `<b>${r.c.name}</b> · ${r.c.f.toFixed(2)} Hz · ${Math.round(r.c.mc)} 音分`;
+  $('m-read').innerHTML = `<b>${r.m.name}</b> · ${r.m.f.toFixed(2)} Hz · ${Math.round(r.m.mc)} 音分`;
+
+  rowsEl.innerHTML = '';
+  rowsEl.appendChild(row('载音', '', 'var(--carrier)', r.c.mc, r.c.f, r.c.name, 0));
+  rowsEl.appendChild(row('调制音', '', 'var(--modulator)', r.m.mc, r.m.f, r.m.name, 0));
+  const sumSnap = r.sum.snap || { name: '—', dev: null };
+  const diffSnap = r.diff.snap || { name: '—', dev: null };
+  rowsEl.appendChild(row('和音', 'out', 'var(--sum)', r.sum.mc, r.sum.f, sumSnap.name, sumSnap.dev));
+  rowsEl.appendChild(row('差音', 'out', 'var(--diff)', r.diff.mc, r.diff.f,
+    r.diff.f < 0.01 ? '直流（0 Hz）' : diffSnap.name, diffSnap.dev));
+
+  statusEl.textContent = r.diff.f < 0.01
+    ? '载音 = 调制音：差音为 0 Hz 直流，不发音；输出只剩和音 2f 与直流分量'
+    : (r.diff.f < 20 ? `差音 ${r.diff.f.toFixed(1)} Hz < 20 Hz` : '');
+  drawChart(r);
+  return r;
+}
+
+/* ---------- 频率轴（SVG）---------- */
+const W = 900, H = 230, PAD_L = 62, PAD_R = 26;
+const STRIP_Y = 26, STRIP_H = 30, AXIS_Y = 168;
+let lastChart = null;
+
+function drawChart(r) {
+  if (!r) r = compute();
+  const vals = [r.c.mc, r.m.mc, r.sum.mc, r.diff.mc].filter(v => Number.isFinite(v));
+  if (!vals.length) return '';
+  let lo = Math.min(...vals) - 260;
+  let hi = Math.max(...vals) + 260;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) { lo = 6000; hi = 7000; }
+  lo = Math.floor(lo / 100) * 100;
+  hi = Math.ceil(hi / 100) * 100;
+  if (hi - lo < 1000) { const mid = (lo + hi) / 2; lo = Math.floor((mid - 500) / 100) * 100; hi = lo + 1000; }
+  const X = mc => PAD_L + (mc - lo) / (hi - lo) * (W - PAD_L - PAD_R);
+  const BLACK = new Set([1, 3, 6, 8, 10]);
+  const p = [];
+
+  p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="-apple-system, PingFang SC, Helvetica, Arial, sans-serif">`);
+  p.push(`<rect width="${W}" height="${H}" fill="#fff"/>`);
+
+  /* 琴键带（12 EDO 半音格） */
+  let guard = 0;
+  for (let mc = lo; mc < hi && guard++ < 4000; mc += 100) {
+    const i = ((mc - 6000) / 100) % 12;
+    const semi = ((i % 12) + 12) % 12;
+    const w = X(mc + 100) - X(mc);
+    if (BLACK.has(semi)) {
+      p.push(`<rect x="${X(mc).toFixed(1)}" y="${STRIP_Y}" width="${w.toFixed(1)}" height="${STRIP_H}"
+               fill="#3a3a3e"/>`);
+    } else {
+      p.push(`<rect x="${X(mc).toFixed(1)}" y="${STRIP_Y}" width="${w.toFixed(1)}" height="${STRIP_H}"
+               fill="#fdfdfe" stroke="#c9c9d1" stroke-width="0.6"/>`);
+      if (semi === 0) {
+        p.push(`<text x="${(X(mc) + 2).toFixed(1)}" y="${STRIP_Y + STRIP_H + 13}" font-size="10" fill="#9a9aa2">c</text>`);
+      }
+    }
+  }
+  /* 当前律制网格 */
+  guard = 0;
+  for (let mc = Math.ceil(lo / step()) * step(); mc <= hi && guard++ < 4000; mc += step()) {
+    p.push(`<line x1="${X(mc).toFixed(1)}" y1="${STRIP_Y + STRIP_H}" x2="${X(mc).toFixed(1)}" y2="${AXIS_Y}"
+             stroke="#dfe3ea" stroke-width="0.6"/>`);
+  }
+  /* 坐标轴 */
+  p.push(`<line x1="${PAD_L}" y1="${AXIS_Y}" x2="${W - PAD_R}" y2="${AXIS_Y}" stroke="#8a8a93" stroke-width="1"/>`);
+  const tickCount = 6;
+  for (let i = 0; i <= tickCount; i++) {
+    const mc = lo + (hi - lo) * i / tickCount;
+    const f = mc2f(mc);
+    p.push(`<line x1="${X(mc).toFixed(1)}" y1="${AXIS_Y}" x2="${X(mc).toFixed(1)}" y2="${AXIS_Y + 5}" stroke="#8a8a93" stroke-width="1"/>`);
+    p.push(`<text x="${X(mc).toFixed(1)}" y="${AXIS_Y + 18}" font-size="10.5" fill="#6b6b70" text-anchor="middle">${f < 100 ? f.toFixed(1) : Math.round(f)} Hz</text>`);
+    const nm = (snapToGrid(mc) || {}).name || '';
+    p.push(`<text x="${X(mc).toFixed(1)}" y="${AXIS_Y + 32}" font-size="10.5" fill="#3a3a3e" text-anchor="middle">${nm}</text>`);
+  }
+  /* 20 Hz 参考线 */
+  const mc20 = f2mc(20);
+  if (mc20 !== null && mc20 > lo && mc20 < hi) {
+    p.push(`<line x1="${X(mc20).toFixed(1)}" y1="${STRIP_Y}" x2="${X(mc20).toFixed(1)}" y2="${AXIS_Y}"
+             stroke="#b26a00" stroke-width="0.8" stroke-dasharray="3 3"/>`);
+    p.push(`<text x="${(X(mc20) + 3).toFixed(1)}" y="${AXIS_Y - 4}" font-size="10" fill="#b26a00">20 Hz</text>`);
+  }
+
+  /* 点 */
+  const Y_IN = AXIS_Y - 78, Y_OUT = AXIS_Y - 42;
+  const put = (mc, f, name, color, y, out, dev) => {
+    if (!Number.isFinite(mc)) return;
+    const x = X(mc);
+    const snap = out ? snapToGrid(mc) : null;
+    const sx = snap ? X(snap.mc) : null;
+    if (sx !== null) {
+      p.push(`<line x1="${x.toFixed(1)}" y1="${y}" x2="${sx.toFixed(1)}" y2="${AXIS_Y}"
+               stroke="${color}" stroke-width="0.9" stroke-dasharray="3 2" opacity="0.75"/>`);
+    }
+    p.push(`<circle cx="${x.toFixed(1)}" cy="${y}" r="${out ? 5 : 4}" fill="${color}"/>`);
+    p.push(`<text x="${x.toFixed(1)}" y="${y - 9}" font-size="11.5" fill="${color}" text-anchor="middle">${name}</text>`);
+    p.push(`<text x="${x.toFixed(1)}" y="${y + (out ? 19 : 18)}" font-size="10.5" fill="#6b6b70" text-anchor="middle">${Number.isFinite(f) ? f.toFixed(1) : '—'} Hz</text>`);
+    if (sx !== null && Number.isFinite(dev)) {
+      p.push(`<text x="${((x + sx) / 2).toFixed(1)}" y="${AXIS_Y - 3}" font-size="10" fill="#8a8a93" text-anchor="middle">${fmtDev(dev)}</text>`);
+    }
+  };
+  put(r.c.mc, r.c.f, '载音', '#0a6cff', Y_IN, false, null);
+  put(r.m.mc, r.m.f, '调制音', '#1a9e8f', Y_IN, false, null);
+  put(r.sum.mc, r.sum.f, '和音', '#d2691e', Y_OUT, true, r.sum.snap ? r.sum.snap.dev : null);
+  put(r.diff.mc, r.diff.f, '差音', '#8e44ad', Y_OUT, true, r.diff.snap ? r.diff.snap.dev : null);
+  if (!Number.isFinite(r.diff.mc)) {
+    p.push(`<text x="${PAD_L + 10}" y="${Y_OUT + 4}" font-size="11.5" fill="#8e44ad">差音 0 Hz（直流，不发音）</text>`);
+  }
+  p.push('</svg>');
+
+  const svg = p.join('\n');
+  $('chart').innerHTML = svg;
+  lastChart = svg;
+  return svg;
+}
+
+/* ---------- 导出 ---------- */
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+$('export-svg').addEventListener('click', () => {
+  const svg = lastChart || drawChart();
+  download(new Blob([svg], { type: 'image/svg+xml' }), 'ringmod-frequency-axis.svg');
+});
+
+$('export-png').addEventListener('click', () => {
+  const svg = lastChart || drawChart();
+  const img = new Image();
+  img.onload = () => {
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * scale; canvas.height = H * scale;
+    const ctx2 = canvas.getContext('2d');
+    ctx2.fillStyle = '#fff';
+    ctx2.fillRect(0, 0, canvas.width, canvas.height);
+    ctx2.drawImage(img, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(b => download(b, 'ringmod-frequency-axis.png'), 'image/png');
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+});
+
+/* ---------- 试听 ---------- */
+let ctx = null, volGain = null, envGain = null, live = [], statusTimer = null;
+const DURATION = 3.0;
+
+function audio() {
+  if (!ctx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    ctx = new AC();
+    volGain = ctx.createGain();
+    volGain.gain.value = +$('vol').value / 100;
+    volGain.connect(ctx.destination);
+    envGain = ctx.createGain();
+    envGain.gain.value = 0;
+    envGain.connect(volGain);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+
+function setAudioStatus(text, warn) {
+  const el = $('audio-status');
+  el.textContent = text;
+  el.className = 'inline' + (warn ? ' status' : '');
+}
+
+function killLive() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  envGain.gain.cancelScheduledValues(t);
+  envGain.gain.setValueAtTime(envGain.gain.value, t);
+  envGain.gain.linearRampToValueAtTime(0, t + 0.04);
+  const old = live; live = [];
+  clearTimeout(statusTimer);
+  setAudioStatus('已停止', false);
+  setTimeout(() => old.forEach(n => {
+    try { n.stop(); } catch (e) {}
+    try { n.disconnect(); } catch (e) {}
+  }), 90);
+}
+
+function tone(f, level) {
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.value = f;
+  const g = ctx.createGain();
+  g.gain.value = level;
+  o.connect(g); g.connect(envGain);
+  o.start();
+  live.push(o, g);
+}
+
+function envelope() {
+  const t = ctx.currentTime;
+  envGain.gain.cancelScheduledValues(t);
+  envGain.gain.setValueAtTime(0, t);
+  envGain.gain.linearRampToValueAtTime(1, t + 0.03);
+  envGain.gain.setValueAtTime(1, t + DURATION - 0.15);
+  envGain.gain.linearRampToValueAtTime(0, t + DURATION);
+}
+
+function play(kind) {
+  audio();
+  killLive();
+  const r = render();
+  const useSnap = $('snap').checked;
+
+  if (kind === 'dyad') {
+    tone(r.c.f, 0.28);
+    tone(r.m.f, 0.28);
+  } else if (kind === 'ring') {
+    const carrier = ctx.createOscillator();
+    carrier.type = 'sine';
+    carrier.frequency.value = r.c.f;
+    const mul = ctx.createGain();
+    mul.gain.value = 0;
+    mul.connect(envGain);
+    carrier.connect(mul);
+    const mod = ctx.createOscillator();
+    mod.type = 'sine';
+    mod.frequency.value = r.m.f;
+    mod.connect(mul.gain);
+    carrier.start(); mod.start();
+    live.push(carrier, mod, mul);
+  } else if (kind === 'sumdiff') {
+    const sumF = useSnap && r.sum.snap ? mc2f(r.sum.snap.mc) : r.sum.f;
+    const diffF = useSnap && r.diff.snap ? mc2f(r.diff.snap.mc) : r.diff.f;
+    if (Number.isFinite(diffF) && diffF >= 20) tone(diffF, 0.34);
+    if (Number.isFinite(sumF)) tone(sumF, 0.34);
+  }
+  envelope();
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => setAudioStatus('已停止', false), DURATION * 1000);
+  setAudioStatus('播放中', false);
+}
+
+/* ---------- 事件 ---------- */
+function readSelects() {
+  cMc = gridMc(+cGroupSel.value, +cNoteSel.value);
+  mMc = gridMc(+mGroupSel.value, +mNoteSel.value);
+}
+
+edoSel.addEventListener('change', e => {
+  edo = +e.target.value;
+  fillNotes();
+  render();
+});
+for (const sel of [cGroupSel, cNoteSel, mGroupSel, mNoteSel]) {
+  sel.addEventListener('change', () => { readSelects(); render(); });
+}
+
+document.querySelectorAll('button[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const [cmc, mmc] = btn.dataset.preset === 'book' ? [6700, 5600] : [5500, 6800];
+    cMc = cmc; mMc = mmc;
+    fillNotes();
+    render();
+  });
+});
+
+$('play-dyad').addEventListener('click', () => play('dyad'));
+$('play-ring').addEventListener('click', () => play('ring'));
+$('play-sumdiff').addEventListener('click', () => play('sumdiff'));
+$('stop').addEventListener('click', killLive);
+$('vol').addEventListener('input', e => {
+  const v = +e.target.value;
+  $('vol-read').textContent = v + '%';
+  if (volGain) volGain.gain.value = v / 100;
+});
+
+/* 自动化测试钩子 */
+window.__rm = {
+  compute,
+  render,
+  chart: () => lastChart,
+  play,
+  stop: killLive,
+  audioState: () => (ctx ? ctx.state : 'none'),
+  setEdo(n) { edo = n; fillNotes(); return render(); },
+  setEdoRaw(n, cg, ci, mg, mi) {
+    edo = n; cMc = gridMc(cg, ci); mMc = gridMc(mg, mi);
+    fillNotes(); return render();
+  },
+  set(group1, idx1, group2, idx2) {
+    cMc = gridMc(group1, idx1); mMc = gridMc(group2, idx2);
+    fillNotes(); return render();
+  },
+  setMc(a, b) {
+    cMc = a; mMc = b;
+    fillNotes(); return render();
+  }
+};
+
+/* 初始化 */
+edo = 12;
+fillNotes();
+render();
+</script>
+</body>
+</html>

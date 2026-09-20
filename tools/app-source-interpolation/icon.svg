@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d1d1f"/>
+      <stop offset="1" stop-color="#3a3a3e"/>
+    </linearGradient>
+    <linearGradient id="curve" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0a6cff"/>
+      <stop offset="1" stop-color="#d2691e"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <g stroke="#8e8e96" stroke-width="13" opacity="0.9" stroke-linecap="round">
+    <line x1="150" y1="360" x2="874" y2="360"/>
+    <line x1="150" y1="430" x2="874" y2="430"/>
+    <line x1="150" y1="500" x2="874" y2="500"/>
+    <line x1="150" y1="570" x2="874" y2="570"/>
+    <line x1="150" y1="640" x2="874" y2="640"/>
+  </g>
+  <path d="M170 706 C 330 706, 420 660, 510 548 C 600 436, 690 336, 862 336"
+        fill="none" stroke="url(#curve)" stroke-width="36" stroke-linecap="round"/>
+  <g fill="#ffffff">
+    <circle cx="170" cy="706" r="22"/>
+    <circle cx="343" cy="672" r="22"/>
+    <circle cx="516" cy="542" r="22"/>
+    <circle cx="689" cy="400" r="22"/>
+    <circle cx="862" cy="336" r="22"/>
+  </g>
+</svg>

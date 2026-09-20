@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>插值计算器</title>
+<style>
+  :root {
+    --ink: #1c1c1e;
+    --muted: #6b6b70;
+    --line: #d9d9de;
+    --bg: #f6f6f8;
+    --accent: #0a6cff;
+    --accent-soft: #e8f0ff;
+    --a: #0a6cff;
+    --b: #d2691e;
+    --warn: #b26a00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 26px 20px 56px;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 .sub { font-size: 12.5px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+  h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 5px; }
+  input[type=number], input[type=text], select {
+    font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  input[type=text] { width: 100%; }
+  input[type=number] { width: 88px; }
+  input[type=range] { width: 150px; }
+  button {
+    font: inherit; font-size: 13.5px; padding: 8px 13px; border-radius: 8px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  button:hover { border-color: #b9b9c0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #0a5ede; }
+  button.ghost { color: var(--muted); }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .controls + .controls { margin-top: 10px; }
+  .inline { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .readout { margin-top: 6px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .readout b { color: var(--ink); font-weight: 600; }
+  .status { font-size: 12.5px; color: var(--warn); }
+  svg { display: block; width: 100%; height: auto; }
+  .chord-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .chord-box { flex: 1 1 380px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .chord-box.a { box-shadow: inset 3px 0 0 var(--a); }
+  .chord-box.b { box-shadow: inset 3px 0 0 var(--b); }
+  .chord-head { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .chord-head .count { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; min-height: 28px; margin-bottom: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px;
+    padding: 3px 8px; border-radius: 999px; background: #f1f2f6; cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .chord-box.a .chip { background: var(--accent-soft); }
+  .chord-box.b .chip { background: #fdeee2; }
+  .chip b { font-weight: 600; color: var(--muted); }
+  .chip:hover { filter: brightness(0.96); }
+  .chip .x { color: var(--muted); font-size: 11px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: none; border-radius: 0; padding: 7px 12px; font-size: 12.5px; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .keyboard-wrap { overflow-x: auto; padding: 4px 0 2px; }
+  .keyboard { position: relative; height: 100px; margin: 0 auto; }
+  .key {
+    position: absolute; top: 0; padding: 0; margin: 0; border: 1px solid #c3c6cd;
+    cursor: pointer; border-radius: 0 0 4px 4px; font: inherit;
+  }
+  .key.white { height: 96px; background: #fff; color: #8a8a93; }
+  .key.black { height: 62px; background: #3a3a3e; color: #d7d7dd; z-index: 2; border-color: #2c2c30; }
+  .key.white:hover { background: #f2f5fb; }
+  .key.black:hover { background: #4a4a50; }
+  .key .klabel { position: absolute; bottom: 4px; left: 0; right: 0; font-size: 8px; text-align: center; pointer-events: none; }
+  .key.black .klabel { bottom: 4px; color: #e7e7ee; }
+  .key.sel-a { background: var(--a); color: #fff; }
+  .key.sel-b { background: var(--b); color: #fff; }
+  .key.sel-both { background: linear-gradient(180deg, var(--a) 0%, var(--b) 100%); color: #fff; }
+  .key.black.sel-a, .key.black.sel-b, .key.black.sel-both { border-color: rgba(0,0,0,.3); }
+  .legend { font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .table-wrap { max-height: 380px; overflow: auto; border: 1px solid #ededf1; border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #ededf1; font-size: 13px; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #fafafc; font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .3px; z-index: 1; }
+  tr:last-child td { border-bottom: none; }
+  .num { color: var(--muted); }
+  .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>插值计算器 <span class="sub">Interpolation Calculator · 与 OpenMusic INTERPOLATION 同构</span></h1>
+
+  <section class="card">
+    <h2>1 · 起点与终点和弦</h2>
+    <div class="chord-row">
+      <div class="chord-box a">
+        <div class="chord-head"><span class="dot" style="background:var(--a)"></span>起点和弦 A<span class="count" id="a-count"></span></div>
+        <div class="chips" id="a-chips"></div>
+        <input type="text" id="a-text" spellcheck="false" placeholder="例如 60 64 67，或 C4 E4 G4">
+      </div>
+      <div class="chord-box b">
+        <div class="chord-head"><span class="dot" style="background:var(--b)"></span>终点和弦 B<span class="count" id="b-count"></span></div>
+        <div class="chips" id="b-chips"></div>
+        <input type="text" id="b-text" spellcheck="false" placeholder="例如 61 66 70，或 C#4 F#4 A#4">
+      </div>
+    </div>
+
+    <div class="controls" style="margin-top:12px">
+      <div class="seg" id="edit-target">
+        <button type="button" data-target="a" class="on" aria-label="编辑起点和弦 A">编辑 A</button>
+        <button type="button" data-target="b" aria-label="编辑终点和弦 B">编辑 B</button>
+      </div>
+      <button type="button" id="apply-a">应用 A 文本</button>
+      <button type="button" id="apply-b">应用 B 文本</button>
+      <button type="button" id="swap">交换 A / B</button>
+      <button type="button" id="center-keys">定位已选音</button>
+      <button type="button" class="ghost" id="clear-a">清空 A</button>
+      <button type="button" class="ghost" id="clear-b">清空 B</button>
+    </div>
+
+    <div class="keyboard-wrap">
+      <div class="keyboard" id="keyboard" role="group" aria-label="钢琴键盘"></div>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--a)"></span>已选入 A</span>
+      <span><span class="dot" style="background:var(--b)"></span>已选入 B</span>
+      <span><span class="dot" style="background:linear-gradient(180deg,var(--a),var(--b))"></span>同时在 A、B</span>
+      <span>全部 88 键（A0–C8）；点击琴键添加/移除。音数必须相同（OM 的和弦插值要求声部一一对应）。</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2 · 插值参数</h2>
+    <div class="row">
+      <div class="field">
+        <label for="preset">曲线 / 参数预置</label>
+        <select id="preset"></select>
+        <div class="hint">只改步数、curve、插值域等参数，永不动你选定的 A / B</div>
+      </div>
+      <div class="field">
+        <label for="samples">和弦数量 / 步数 samples</label>
+        <input type="number" id="samples" min="1" max="128" step="1" value="12">
+        <div class="hint">包含首尾两个端点（OM 语义）</div>
+      </div>
+      <div class="field">
+        <label for="curve">弯曲度 curve</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="range" id="curve" min="-1" max="1" step="0.01" value="0">
+          <input type="number" id="curve-num" step="0.05" min="-3" max="3" value="0" style="width:74px">
+        </div>
+        <div class="hint">0 线性；&gt; 0 先快后慢；&lt; 0 先慢后快（加速）</div>
+      </div>
+      <div class="field">
+        <label for="domain">插值域</label>
+        <select id="domain">
+          <option value="midi">MIDI / 半音（对数音高）</option>
+          <option value="freq">频率 Hz（线性频率）</option>
+        </select>
+        <div class="hint">频率域对应 OM 的 f-interpol</div>
+      </div>
+      <div class="field">
+        <label for="step-ms">每和弦时值（毫秒）</label>
+        <input type="number" id="step-ms" min="50" max="10000" step="50" value="500">
+      </div>
+      <div class="field">
+        <label for="gate">连断比例 gate</label>
+        <input type="range" id="gate" min="0.05" max="1" step="0.05" value="0.9">
+      </div>
+      <div class="field">
+        <label for="per-system">五线谱每行和弦数</label>
+        <select id="per-system">
+          <option value="4">4</option>
+          <option value="6">6</option>
+          <option value="8" selected>8</option>
+          <option value="10">10</option>
+          <option value="12">12</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>显示</label>
+        <label class="inline" style="font-weight:400"><input type="checkbox" id="show-cents" checked> 微分音偏差</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3 · MIDI 微分音导出</h2>
+    <div class="row">
+      <div class="field">
+        <label for="micro-mode">导出方式</label>
+        <select id="micro-mode">
+          <option value="bend" selected>Pitch Bend（每声部一通道，推荐）</option>
+          <option value="mts">MIDI Tuning Standard（绝对调音）</option>
+          <option value="plain">不写微分音（12 平均律）</option>
+        </select>
+        <div class="hint">Pitch Bend 兼容性最好；MTS 需要合成器支持</div>
+      </div>
+      <div class="field">
+        <label for="bend-range">Pitch Bend 范围</label>
+        <select id="bend-range">
+          <option value="2" selected>±2 半音（标准）</option>
+          <option value="12">±12 半音</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>文本信息</label>
+        <label class="inline" style="font-weight:400"><input type="checkbox" id="text-meta" checked> 写入音分文本（meta）</label>
+      </div>
+    </div>
+    <div class="readout" id="micro-readout"></div>
+  </section>
+
+  <section class="card">
+    <h2>4 · 过渡曲线</h2>
+    <div id="curve-chart"></div>
+  </section>
+
+  <section class="card">
+    <h2>5 · 结果五线谱</h2>
+    <div id="summary" class="readout"></div>
+    <div id="staff"></div>
+    <div class="controls" style="margin-top:12px">
+      <button type="button" class="primary" id="play">▶ 播放</button>
+      <button type="button" id="stop">■ 停止</button>
+      <label class="inline">音量 <input type="range" id="vol" min="0" max="100" value="30"></label>
+      <span class="inline" id="audio-status"></span>
+    </div>
+    <div class="controls">
+      <button type="button" class="primary" id="export-midi">导出 MIDI</button>
+      <button type="button" id="export-svg">导出五线谱 SVG</button>
+      <button type="button" id="copy-data">复制数据表</button>
+      <span class="inline" id="export-status"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>6 · 数据</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>t</th><th>权重 w</th><th>音高（MIDI 浮点）</th>
+            <th>音名</th><th>频率 Hz</th><th>MIDI 取整（导出用）</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="readout">MIDI 的 note number 只能记整数半音，但微分音可以通过 Pitch Bend（每声部一个通道）或 MIDI Tuning Standard（SysEx 批量调音）写进文件；表里的“音名”“频率”与“权重”始终是真实计算结果。</div>
+  </section>
+</div>
+
+<script src="interpolation-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = window.InterpCore;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = {
+    a: [60, 64, 67],
+    b: [61, 66, 70],
+    target: 'a',
+    samples: 12,
+    curve: 0,
+    domain: 'midi',
+    stepMs: 500,
+    gate: 0.9,
+    perSystem: 8,
+    showCents: true,
+    vol: 0.3,
+    microMode: 'bend',
+    bendRange: 2,
+    includeText: true
+  };
+  var lastResult = null;
+  var lastRows = null;
+  var lastStaffSVG = '';
+  var lastCurveSVG = '';
+
+  /* ---------- 预置 ---------- */
+  (function fillPresets() {
+    var sel = $('preset');
+    var o = document.createElement('option');
+    o.value = '';
+    o.textContent = '自定义…';
+    sel.appendChild(o);
+    C.PRESETS.forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.label;
+      sel.appendChild(opt);
+    });
+    sel.value = 'ex32';
+  })();
+
+  function applyPreset(id) {
+    var p = C.PRESETS.filter(function (x) { return x.id === id; })[0];
+    if (!p) return;
+    /* 预置只改参数，绝不覆盖已经选定的 A / B */
+    state.samples = p.samples;
+    state.curve = p.curve;
+    state.domain = p.domain;
+    if (p.stepMs) state.stepMs = p.stepMs;
+    if (p.gate) state.gate = p.gate;
+    $('samples').value = state.samples;
+    $('curve').value = state.curve;
+    $('curve-num').value = state.curve;
+    $('domain').value = state.domain;
+    $('step-ms').value = state.stepMs;
+    $('gate').value = state.gate;
+    render();
+  }
+
+  /* ---------- 钢琴键盘 ---------- */
+  var LOW = 21, HIGH = 108, WHITE_W = 17, BLACK_W = 11;
+  var BLACK_PC = new Set([1, 3, 6, 8, 10]);
+  var keyEls = {};
+
+  (function buildKeyboard() {
+    var kb = $('keyboard');
+    var whiteCount = 0;
+    for (var m = LOW; m <= HIGH; m++) if (!BLACK_PC.has(((m % 12) + 12) % 12)) whiteCount++;
+    kb.style.width = (whiteCount * WHITE_W) + 'px';
+    var wIndex = 0;
+    for (var midi = LOW; midi <= HIGH; midi++) {
+      var pc = ((midi % 12) + 12) % 12;
+      var black = BLACK_PC.has(pc);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'key ' + (black ? 'black' : 'white');
+      b.setAttribute('data-midi', String(midi));
+      b.setAttribute('aria-label', C.midiToName(midi));
+      if (black) {
+        b.style.left = (wIndex * WHITE_W - BLACK_W / 2) + 'px';
+        b.style.width = BLACK_W + 'px';
+      } else {
+        b.style.left = (wIndex * WHITE_W) + 'px';
+        b.style.width = WHITE_W + 'px';
+        wIndex++;
+      }
+      if (pc === 0 || midi === LOW) {
+        var lab = document.createElement('span');
+        lab.className = 'klabel';
+        lab.textContent = C.midiToName(midi);
+        b.appendChild(lab);
+      }
+      b.addEventListener('click', function () {
+        toggleKey(parseInt(this.getAttribute('data-midi'), 10));
+      });
+      kb.appendChild(b);
+      keyEls[midi] = b;
+    }
+  })();
+
+  function chordHas(list, midi) {
+    return list.some(function (v) { return Math.abs(v - midi) < 1e-9; });
+  }
+
+  function toggleKey(midi) {
+    var list = state[state.target];
+    var i = list.findIndex(function (v) { return Math.abs(v - midi) < 1e-9; });
+    if (i >= 0) list.splice(i, 1);
+    else {
+      list.push(midi);
+      list.sort(function (a, b) { return a - b; });
+    }
+    state[state.target] = list;
+    render();
+  }
+
+  function paintKeyboard() {
+    Object.keys(keyEls).forEach(function (k) {
+      var el = keyEls[k];
+      var midi = parseInt(k, 10);
+      var inA = chordHas(state.a, midi);
+      var inB = chordHas(state.b, midi);
+      el.classList.toggle('sel-a', inA && !inB);
+      el.classList.toggle('sel-b', inB && !inA);
+      el.classList.toggle('sel-both', inA && inB);
+    });
+  }
+
+  /* 把当前 A / B 的平均音高滚到键盘中间（窗口较窄、需要横向滚动时有用） */
+  function centerKeyboard() {
+    var wrap = document.querySelector('.keyboard-wrap');
+    var all = state.a.concat(state.b);
+    if (!wrap || !all.length) return;
+    var avg = all.reduce(function (s, v) { return s + v; }, 0) / all.length;
+    var midi = Math.max(LOW, Math.min(HIGH, Math.round(avg)));
+    var el = keyEls[midi];
+    if (!el) return;
+    var target = el.offsetLeft + el.offsetWidth / 2 - wrap.clientWidth / 2;
+    wrap.scrollLeft = Math.max(0, target);
+  }
+
+  /* ---------- 和弦 chips 与文本 ---------- */
+  function renderChips(which) {
+    var el = $(which + '-chips');
+    var list = state[which];
+    el.innerHTML = '';
+    if (!list.length) {
+      var empty = document.createElement('span');
+      empty.className = 'empty';
+      empty.textContent = '（空）';
+      el.appendChild(empty);
+    }
+    list.forEach(function (v, i) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.setAttribute('role', 'button');
+      chip.setAttribute('tabindex', '0');
+      chip.setAttribute('aria-label', '移除 ' + C.midiToLabel(v));
+      chip.innerHTML = C.midiToName(v) + ' <b>' + (Math.round(v * 100) / 100) + '</b><span class="x">×</span>';
+      chip.addEventListener('click', function () {
+        state[which].splice(i, 1);
+        render();
+      });
+      el.appendChild(chip);
+    });
+    $(which + '-count').textContent = list.length + ' 个音';
+    var txt = $(which + '-text');
+    if (document.activeElement !== txt) txt.value = list.join(' ');
+  }
+
+  /* ---------- 计算与渲染 ---------- */
+  function currentConfig() {
+    return {
+      chordA: state.a,
+      chordB: state.b,
+      samples: state.samples,
+      curve: state.curve,
+      domain: state.domain
+    };
+  }
+
+  function render() {
+    paintKeyboard();
+    renderChips('a');
+    renderChips('b');
+    lastCurveSVG = C.renderCurveSVG(state.curve, state.samples);
+    $('curve-chart').innerHTML = lastCurveSVG;
+
+    try {
+      lastResult = C.computeInterpolation(currentConfig());
+      lastRows = C.buildRows(lastResult, {});
+      lastStaffSVG = C.renderStaffSVG(lastResult.chords, { perSystem: state.perSystem, showCents: state.showCents });
+      $('staff').innerHTML = lastStaffSVG;
+      renderTable();
+      var totalMs = state.stepMs * lastResult.chords.length;
+      $('summary').innerHTML = '<b>' + lastResult.chords.length + '</b> 个和弦 · <b>' + state.a.length + '</b> 个声部 · 总时长 <b>'
+        + (totalMs / 1000).toFixed(2) + ' s</b> · ' + (state.domain === 'freq' ? '频率域插值' : 'MIDI / 半音域插值')
+        + ' · curve = ' + state.curve.toFixed(2);
+      $('export-status').textContent = '';
+      renderMicro();
+      reportState();
+    } catch (err) {
+      lastRows = null;
+      lastStaffSVG = '';
+      $('staff').innerHTML = '<div class="empty status">' + err.message + '</div>';
+      $('summary').innerHTML = '<span class="status">' + err.message + '</span>';
+      $('tbody').innerHTML = '';
+      $('micro-readout').textContent = '';
+    }
+  }
+
+  function renderMicro() {
+    var el = $('micro-readout');
+    if (!lastRows) { el.textContent = ''; return; }
+    var microCount = 0;
+    var voices = 0;
+    lastRows.forEach(function (r) {
+      voices = Math.max(voices, r.notes.length);
+      r.notes.forEach(function (n) {
+        if (Math.abs(n.midi - Math.round(n.midi)) > 1e-6) microCount++;
+      });
+    });
+    if (!microCount) {
+      el.innerHTML = '当前结果全部是整数半音，导出会自动使用最兼容的单通道 12 平均律写法。';
+      return;
+    }
+    var parts = ['<b>' + microCount + '</b> 个微分音音高 · <b>' + voices + '</b> 个声部'];
+    if (state.microMode === 'bend') {
+      parts.push(voices <= 15
+        ? 'Pitch Bend：占用 <b>' + voices + '</b> 个通道（跳过 GM 鼓通道），弯音范围 ±' + state.bendRange + ' 半音'
+        : '<span class="status">声部超过 15，Pitch Bend 通道会共享，建议改用 MTS</span>');
+    } else if (state.microMode === 'mts') {
+      parts.push('MTS：写入 SysEx 批量调音表（需合成器支持）；音高种类超过 128 时自动退回 Pitch Bend');
+    } else {
+      parts.push('12 平均律：微分音只写在音分文本里，不参与发声');
+    }
+    if (state.includeText) parts.push('并写入音分文本 meta');
+    el.innerHTML = parts.join(' · ');
+  }
+
+  function renderTable() {
+    var tb = $('tbody');
+    tb.innerHTML = '';
+    lastRows.forEach(function (row) {
+      var tr = document.createElement('tr');
+      var names = row.notes.map(function (n) { return C.midiToLabel(n.midi); }).join(' · ');
+      var mids = row.notes.map(function (n) { return Math.round(n.midi * 100) / 100; }).join(' · ');
+      var freqs = row.notes.map(function (n) { return n.freq.toFixed(2); }).join(' · ');
+      var rounded = row.midiRounded.join(' · ');
+      tr.innerHTML = '<td class="num">' + (row.index + 1) + '</td>'
+        + '<td class="num">' + row.t.toFixed(3) + '</td>'
+        + '<td class="num">' + row.weight.toFixed(4) + '</td>'
+        + '<td class="mono">' + mids + '</td>'
+        + '<td>' + names + '</td>'
+        + '<td class="mono">' + freqs + '</td>'
+        + '<td class="mono">' + rounded + '</td>';
+      tb.appendChild(tr);
+    });
+  }
+
+  /* ---------- 导出 ---------- */
+  function download(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  $('export-midi').addEventListener('click', function () {
+    if (!lastRows) return;
+    var chords = lastRows.map(function (r) {
+      return r.notes.map(function (n) { return n.midi; });
+    });
+    var bytes = C.buildMidiFile({
+      chords: chords,
+      stepMs: state.stepMs,
+      gate: state.gate,
+      bpm: 120,
+      program: 0,
+      trackName: 'Interpolation ' + lastRows.length + ' chords',
+      microMode: state.microMode,
+      bendRange: state.bendRange,
+      includeText: state.includeText
+    });
+    var name = 'interpolation-' + lastRows.length + 'ch-' + (state.domain === 'freq' ? 'freq' : 'midi') + '-' + state.microMode + '.mid';
+    download(new Blob([bytes], { type: 'audio/midi' }), name);
+    var label = { bend: 'Pitch Bend', mts: 'MTS', plain: '12 平均律' }[state.microMode] || state.microMode;
+    $('export-status').textContent = '已导出 ' + name + '（' + label + (state.includeText ? ' + 音分文本' : '') + '）';
+  });
+
+  $('export-svg').addEventListener('click', function () {
+    if (!lastStaffSVG) return;
+    download(new Blob([lastStaffSVG], { type: 'image/svg+xml' }), 'interpolation-staff.svg');
+    $('export-status').textContent = '已导出五线谱 SVG';
+  });
+
+  $('copy-data').addEventListener('click', function () {
+    if (!lastRows) return;
+    var lines = ['#\tt\t权重\tMIDI\t音名\t频率 Hz\tMIDI 取整'];
+    lastRows.forEach(function (r) {
+      lines.push([
+        r.index + 1,
+        r.t.toFixed(3),
+        r.weight.toFixed(4),
+        r.notes.map(function (n) { return Math.round(n.midi * 100) / 100; }).join(' '),
+        r.notes.map(function (n) { return C.midiToLabel(n.midi); }).join(' '),
+        r.notes.map(function (n) { return n.freq.toFixed(2); }).join(' '),
+        r.midiRounded.join(' ')
+      ].join('\t'));
+    });
+    var text = lines.join('\n');
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    $('export-status').textContent = ok ? '数据表已复制到剪贴板' : '复制失败，请手动选择表格内容';
+  });
+
+  /* ---------- 播放 ---------- */
+  var actx = null, master = null, voices = [];
+
+  function audio() {
+    if (!actx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+      master = actx.createGain();
+      master.gain.value = state.vol;
+      master.connect(actx.destination);
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+
+  function stopAudio() {
+    voices.forEach(function (v) {
+      try { v.stop(); } catch (e) {}
+      try { v.disconnect(); } catch (e) {}
+    });
+    voices = [];
+    reportState({ playing: false });
+  }
+
+  function playAll() {
+    if (!lastRows || !lastRows.length) return;
+    audio();
+    stopAudio();
+    var t0 = actx.currentTime + 0.06;
+    var step = state.stepMs / 1000;
+    var dur = Math.max(0.05, step * state.gate);
+    lastRows.forEach(function (row, i) {
+      var start = t0 + i * step;
+      var level = 0.24 / Math.sqrt(row.notes.length || 1);
+      row.notes.forEach(function (n) {
+        var o = actx.createOscillator();
+        o.type = 'triangle';
+        o.frequency.value = n.freq;
+        var g = actx.createGain();
+        g.gain.setValueAtTime(0, start);
+        g.gain.linearRampToValueAtTime(level, start + 0.02);
+        g.gain.setValueAtTime(level, start + Math.max(0.03, dur * 0.75));
+        g.gain.linearRampToValueAtTime(0, start + dur);
+        o.connect(g);
+        g.connect(master);
+        o.start(start);
+        o.stop(start + dur + 0.03);
+        voices.push(o, g);
+      });
+    });
+    var total = lastRows.length * step;
+    $('audio-status').textContent = '播放中… ' + total.toFixed(1) + ' s';
+    lastRows.forEach(function (row, i) {
+      setTimeout(function () { reportState({ step: i + 1, playing: true }); }, i * step * 1000);
+    });
+    setTimeout(function () {
+      if (voices.length) $('audio-status').textContent = '播放结束';
+      reportState({ step: lastRows.length, playing: false });
+    }, total * 1000 + 200);
+  }
+
+  $('play').addEventListener('click', playAll);
+  $('stop').addEventListener('click', function () {
+    stopAudio();
+    $('audio-status').textContent = '已停止';
+  });
+  $('vol').addEventListener('input', function () {
+    state.vol = +this.value / 100;
+    if (master) master.gain.value = state.vol;
+  });
+
+  /* ---------- 控件绑定 ---------- */
+  $('edit-target').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    state.target = b.getAttribute('data-target');
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function (x) {
+      x.classList.toggle('on', x === b);
+    });
+  });
+
+  $('apply-a').addEventListener('click', function () {
+    try { state.a = C.parseChordText($('a-text').value); render(); }
+    catch (err) { $('export-status').textContent = err.message; }
+  });
+  $('apply-b').addEventListener('click', function () {
+    try { state.b = C.parseChordText($('b-text').value); render(); }
+    catch (err) { $('export-status').textContent = err.message; }
+  });
+  $('swap').addEventListener('click', function () {
+    var t = state.a; state.a = state.b; state.b = t; render();
+  });
+  $('center-keys').addEventListener('click', centerKeyboard);
+  $('clear-a').addEventListener('click', function () { state.a = []; render(); });
+  $('clear-b').addEventListener('click', function () { state.b = []; render(); });
+
+  $('preset').addEventListener('change', function () { applyPreset(this.value); });
+  $('samples').addEventListener('input', function () {
+    state.samples = Math.max(1, Math.min(128, parseInt(this.value, 10) || 1));
+    render();
+  });
+  $('curve').addEventListener('input', function () {
+    state.curve = +this.value;
+    $('curve-num').value = state.curve;
+    render();
+  });
+  $('curve-num').addEventListener('input', function () {
+    var v = parseFloat(this.value);
+    if (!Number.isFinite(v)) return;
+    state.curve = v;
+    $('curve').value = Math.max(-1, Math.min(1, v));
+    render();
+  });
+  $('domain').addEventListener('change', function () { state.domain = this.value; render(); });
+  $('step-ms').addEventListener('input', function () {
+    state.stepMs = Math.max(50, parseInt(this.value, 10) || 500);
+    render();
+  });
+  $('gate').addEventListener('input', function () { state.gate = +this.value; });
+  $('per-system').addEventListener('change', function () { state.perSystem = parseInt(this.value, 10) || 8; render(); });
+  $('show-cents').addEventListener('change', function () { state.showCents = this.checked; render(); });
+  $('micro-mode').addEventListener('change', function () { state.microMode = this.value; renderMicro(); });
+  $('bend-range').addEventListener('change', function () { state.bendRange = +this.value; renderMicro(); });
+  $('text-meta').addEventListener('change', function () { state.includeText = this.checked; renderMicro(); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === ' ' && e.target.tagName !== 'INPUT') {
+      e.preventDefault();
+      playAll();
+    }
+  });
+
+  /* ---------- 原生外壳桥（作曲工具 PoC） ---------- */
+  function postBridge(payload) {
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge) {
+        window.webkit.messageHandlers.bridge.postMessage(payload);
+      }
+    } catch (e) {}
+  }
+  function reportState(extra) {
+    var info = {
+      tool: 'interp',
+      chords: lastRows ? lastRows.length : 0,
+      voices: state.a.length,
+      samples: state.samples,
+      curve: state.curve,
+      domain: state.domain,
+      step: 0,
+      playing: false
+    };
+    if (extra) {
+      for (var key in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, key)) info[key] = extra[key];
+      }
+    }
+    postBridge(info);
+  }
+  window.InterpAPI = {
+    play: function () { playAll(); },
+    stop: function () { stopAudio(); },
+    exportMidi: function () { $('export-midi').click(); },
+    exportSvg: function () { $('export-svg').click(); },
+    report: function () { reportState(); }
+  };
+  setInterval(function () {
+    postBridge({
+      tool: 'interp',
+      heartbeat: Date.now(),
+      audioState: actx ? actx.state : 'none',
+      audioTime: actx ? actx.currentTime : 0
+    });
+  }, 1000);
+
+  render();
+  centerKeyboard();
+})();
+</script>
+</body>
+</html>

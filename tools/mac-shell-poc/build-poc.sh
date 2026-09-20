@@ -1,0 +1,27 @@
+#!/bin/zsh
+# 编译并组装「作曲工具 PoC.app」
+# 需要 macOS 26+ SDK；本机用 Command Line Tools 即可，不依赖 Xcode。
+set -e
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLS="$(cd "$DIR/.." && pwd)"
+OUT="$DIR/build"
+APP="$OUT/作曲工具 PoC.app"
+
+mkdir -p "$OUT"
+
+clang -fobjc-arc -O2 -framework Cocoa -framework WebKit -framework QuartzCore \
+  -o "$OUT/ComposerToolsPoc" "$DIR/main.m"
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$OUT/ComposerToolsPoc" "$APP/Contents/MacOS/ComposerToolsPoc"
+cp "$DIR/Info.plist" "$APP/Contents/Info.plist"
+cp "$DIR/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$TOOLS/ringmod-demo.html" "$APP/Contents/Resources/ringmod-demo.html"
+cp "$TOOLS/interpolation-demo.html" "$APP/Contents/Resources/interpolation-demo.html"
+cp "$TOOLS/interpolation-core.js" "$APP/Contents/Resources/interpolation-core.js"
+cp "$DIR/README.md" "$APP/Contents/Resources/README.md"
+codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+
+echo "已生成: $APP"
