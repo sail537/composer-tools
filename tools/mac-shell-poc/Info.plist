@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>作曲工具 PoC</string>
+  <string>算法作曲工具集</string>
   <key>CFBundleDisplayName</key>
-  <string>作曲工具 PoC</string>
+  <string>算法作曲工具集</string>
   <key>CFBundleExecutable</key>
-  <string>ComposerToolsPoc</string>
+  <string>AlgorithmicComposer</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>

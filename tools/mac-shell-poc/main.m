@@ -2,7 +2,7 @@
 #import <WebKit/WebKit.h>
 #import <QuartzCore/QuartzCore.h>
 
-static NSString * const kAppTitle = @"作曲工具 PoC";
+static NSString * const kAppTitle = @"算法作曲工具集";
 /* 版本号：与 Info.plist 的 CFBundleShortVersionString 保持一致。
    0.2 = 四个工具（环形调制 / 插值 / 虚拟基音 / 节奏插值）；
    1.0 的判据见 README 的「路线图」。 */
@@ -1566,6 +1566,10 @@ static BOOL POCFlag(NSString *name) {
     [self addItem:@"插值" action:@selector(selectToolMenu:) key:@"2" target:self to:toolMenu];
     [self addItem:@"虚拟基音" action:@selector(selectToolMenu:) key:@"3" target:self to:toolMenu];
     [self addItem:@"节奏插值" action:@selector(selectToolMenu:) key:@"4" target:self to:toolMenu];
+    [toolMenu addItem:[NSMenuItem separatorItem]];
+    /* 播放/停止都作用在当前工具上，不再按工具各写一份 */
+    [self addItem:@"播放当前工具" action:@selector(playCurrentTool:) key:@"" target:self to:toolMenu];
+    [self addItem:@"停止" action:@selector(stopCurrentTool:) key:@"." target:self to:toolMenu];
 
     NSMenuItem *toggle = [viewMenu addItemWithTitle:@"显示 / 隐藏侧边栏"
                                              action:@selector(toggleSidebar:) keyEquivalent:@"s"];
@@ -1596,19 +1600,6 @@ static BOOL POCFlag(NSString *name) {
         NSEventModifierFlagCommand | NSEventModifierFlagOption;
     [self addItem:@"还原主窗口" action:@selector(restoreMainWindow:) key:@"r" target:self to:viewMenu].keyEquivalentModifierMask =
         NSEventModifierFlagCommand | NSEventModifierFlagOption;
-
-    NSMenuItem *toolsItem = [[NSMenuItem alloc] init];
-    [mainMenu addItem:toolsItem];
-    NSMenu *toolsMenu = [[NSMenu alloc] initWithTitle:@"工具"];
-    toolsItem.submenu = toolsMenu;
-    [self addItem:@"两音试听" action:@selector(playDyad:) key:@"" target:self to:toolsMenu];
-    [self addItem:@"环形调制试听" action:@selector(playRing:) key:@"" target:self to:toolsMenu];
-    [self addItem:@"和音 + 差音" action:@selector(playSumDiff:) key:@"" target:self to:toolsMenu];
-    [self addItem:@"停止" action:@selector(stopAudio:) key:@"." target:self to:toolsMenu];
-    [toolsMenu addItem:[NSMenuItem separatorItem]];
-    [self addItem:@"插值：播放" action:@selector(playInterp:) key:@"" target:self to:toolsMenu];
-    [self addItem:@"插值：停止" action:@selector(stopInterp:) key:@"" target:self to:toolsMenu];
-    [self addItem:@"插值：导出 MIDI" action:@selector(exportInterpMidi:) key:@"" target:self to:toolsMenu];
 
     NSMenuItem *windowItem = [[NSMenuItem alloc] init];
     [mainMenu addItem:windowItem];

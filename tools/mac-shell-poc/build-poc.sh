@@ -1,21 +1,22 @@
 #!/bin/zsh
-# 编译并组装「作曲工具 PoC.app」
+# 编译并组装「算法作曲工具集.app」
 # 需要 macOS 26+ SDK；本机用 Command Line Tools 即可，不依赖 Xcode。
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOLS="$(cd "$DIR/.." && pwd)"
 OUT="$DIR/build"
-APP="$OUT/作曲工具 PoC.app"
+APP="$OUT/算法作曲工具集.app"
 
 mkdir -p "$OUT"
+rm -f "$OUT/AlgorithmicComposer" "$OUT/ComposerToolsPoc"
 
 clang -fobjc-arc -O2 -framework Cocoa -framework WebKit -framework QuartzCore \
-  -o "$OUT/ComposerToolsPoc" "$DIR/main.m"
+  -o "$OUT/AlgorithmicComposer" "$DIR/main.m"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$OUT/ComposerToolsPoc" "$APP/Contents/MacOS/ComposerToolsPoc"
+cp "$OUT/AlgorithmicComposer" "$APP/Contents/MacOS/AlgorithmicComposer"
 cp "$DIR/Info.plist" "$APP/Contents/Info.plist"
 cp "$DIR/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$TOOLS/ringmod-demo.html" "$APP/Contents/Resources/ringmod-demo.html"

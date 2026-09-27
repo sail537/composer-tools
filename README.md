@@ -28,7 +28,7 @@
 | 插值计算器 | `tools/interpolation-demo.html` + `tools/interpolation-core.js` | 网页：与 OM 同构的插值、88 键输入、五线谱、曲线预览、MIDI 导出（含微分音） |
 | 虚拟基音计算器 | `tools/virtualfund-demo.html` + `tools/virtualfund-core.js` | 网页：移植 OM 的 `tolerant-gcd` / `virtual-fund`，虚基音、泛音序号对照表、精度扫描、MIDI/SVG 导出 |
 | 节奏插值 | `tools/rhythm-interp-demo.html` + `tools/rhythm-interp-core.js` | 网页：多声部、休止符、拍号、音值组合法、五线谱（abcjs）、MIDI/SVG 导出 |
-| 作曲工具 0.2（原生外壳） | `tools/mac-shell-poc/` | AppKit + WKWebView：侧边栏、独立置顶悬浮面板、真 Liquid Glass、**四工具**切换（⌘1–⌘4） |
+| 算法作曲工具集 0.2（原生外壳） | `tools/mac-shell-poc/` | AppKit + WKWebView：侧边栏、独立置顶悬浮面板、真 Liquid Glass、**四工具**切换（⌘1–⌘4） |
 | 两个单工具 .app | `tools/app-source/`、`tools/app-source-interpolation/` | ObjC + WKWebView 的 app 外壳源码与打包脚本 |
 
 ## 路线图：通往 1.0
@@ -90,12 +90,12 @@ node tools/test-virtualfund-core.mjs        # 24 项
 ```
 共 124 项，全绿。
 
-### 作曲工具（原生外壳）
+### 算法作曲工具集（原生外壳）
 
 ```sh
 cd tools/mac-shell-poc
 ./build-poc.sh
-open "build/作曲工具 PoC.app"
+open "build/算法作曲工具集.app"
 ```
 
 功能（0.2）：
@@ -134,7 +134,7 @@ tools/
 ├── README-节奏插值.md
 ├── app-source/                       环形调制 .app 外壳（ObjC）
 ├── app-source-interpolation/         插值 .app 外壳（ObjC）
-└── mac-shell-poc/                    作曲工具 0.2 原生外壳
+└── mac-shell-poc/                    算法作曲工具集 0.2 原生外壳
     ├── main.m                        AppKit 外壳 + 悬浮面板 + 桥
     ├── build-poc.sh                  编译打包脚本
     ├── make-icon.swift               图标绘制
@@ -164,7 +164,7 @@ tools/
   ```sh
   cd tools/mac-shell-poc
   ./build-poc.sh
-  ditto "build/作曲工具 PoC.app" "/Applications/作曲工具 PoC.app"
+  ditto "build/算法作曲工具集.app" "/Applications/算法作曲工具集.app"
   ```
 
 - 没有 Xcode 时，SwiftUI 的 `@State` 等属性包装不可用（缺 `SwiftUIMacros` 插件）；
@@ -173,7 +173,7 @@ tools/
 ## 已知限制
 
 - 原生 app 目标为 macOS 26+ / arm64，ad-hoc 签名；他人下载后首次打开需右键“打开”，
-  或执行 `xattr -dr com.apple.quarantine "/Applications/作曲工具 PoC.app"`
+  或执行 `xattr -dr com.apple.quarantine "/Applications/算法作曲工具集.app"`
 - 想要更广分发，需要 Apple Developer ID 签名 + 公证
 - 没有 Xcode 时不能产出 Liquid Glass 时代的分层 app 图标（当前使用传统 `.icns`）
 
