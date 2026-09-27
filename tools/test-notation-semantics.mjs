@@ -93,6 +93,14 @@ function check(label, durations, options) {
   if (Math.abs(read.total - expected) > EPS) {
     problems.push('谱面总时长 ' + read.total.toFixed(5) + ' != 预期 ' + expected.toFixed(5));
   }
+  /* 延音线的不变量：谱面上的发声点数 = 原起点数 + 延音线条数。
+     少一条线意味着两个音被错误地并成一个（或相反），多一条意味着凭空切开。 */
+  const bodyText = abc.split('\n').filter((l) => l && !/^[A-Z]:/.test(l) && !/^%%/.test(l)).join(' ');
+  const dashes = (bodyText.match(/-/g) || []).length;
+  if (read.onsets.length !== step.onsets.length + dashes) {
+    problems.push('发声点数 ' + read.onsets.length + ' != 起点数 ' + step.onsets.length
+      + ' + 延音线 ' + dashes);
+  }
 
   if (problems.length) {
     failed += 1;
@@ -123,6 +131,15 @@ check('1/3 与 1/6 混合', [1 / 3, 1 / 6, 1 / 6]);
 check('6/8 三连音', Array(6).fill(1 / 12), { meter: [6, 8] });
 check('3/4 跨小节长音', [1 / 2, 1 / 2], { meter: [3, 4] });
 check('孤立 1/12 退回网格', [1 / 16, 1 / 12, 1 / 16]);
+
+/* ---------- 音值组合法 ---------- */
+
+check('组合法：跨单位拍要拆', [1 / 16, 1 / 16, 1 / 16, 2 / 16, 1 / 16, 1 / 16, 1 / 16, 1 / 2]);
+check('组合法：弱位起的跨拍', [1 / 4, 3 / 8, 3 / 8]);
+check('组合法：第2拍上的二分', [1 / 4, 1 / 2, 1 / 4]);
+check('组合法：强位起的附点二分', [3 / 4, 1 / 4]);
+check('组合法：3/4 第2拍上的二分', [1 / 4, 1 / 2], { meter: [3, 4] });
+check('组合法：12/8 半分点', [3 / 8, 3 / 8, 3 / 4], { meter: [12, 8] });
 
 /* ---------- 休止符 ---------- */
 

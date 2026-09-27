@@ -247,14 +247,62 @@ ok('连音优先级开关：复合拍二连音', () => {
 });
 
 ok('跨两拍的连音括号不如直接写音符（节拍对齐代价）', () => {
-  /* 4/4 里两个附点四分＝两拍：写 B3 B3 比套一个跨两拍的括号规范 */
+  /* 4/4 里两个附点四分：第二个从 3/8（弱位）起、跨过第 2 拍，
+     所以按音值组合法要拆成 1/8 连 1/4，而不是套一个跨两拍的括号 */
   const step = stepFrom([3 / 8, 3 / 8]);
   const abc = C.stepToABCGlobal(step, { minValue: 1 / 16, tuplets: [[2, 3], [3, 2]], preferTuplets: true });
   assert.ok(!abc.includes('('), abc);
-  assert.ok(abc.includes('B3 B3'), abc);
+  assert.ok(abc.includes('B3 B- B2'), abc);
 });
 
 /* ---------- 拍号与节拍层级 ---------- */
+
+console.log('\n音值组合法');
+
+ok('弱位起、跨过拍点的音要拆开并加延音线', () => {
+  /* 用户报的例子：按 16 分单位是 0 1 2 [3-5] 5 6 7 | 8，
+     第 4 个音从 3/16 起、持续 2/16，跨过第 2 拍（4/16），
+     必须写成 1/16 连 1/16，而不是一个八分音符 */
+  const step = stepFrom([1 / 16, 1 / 16, 1 / 16, 2 / 16, 1 / 16, 1 / 16, 1 / 16, 1 / 2]);
+  const abc = C.stepToABCGlobal(step, { minValue: 1 / 16 });
+  assert.ok(abc.includes('B B B B- B B B B B8'), abc);
+  assert.ok(!abc.includes('B2 B B B B8'), '不该把跨拍的音写成一个八分：' + abc);
+});
+
+ok('4/4：第 2 拍上的二分要拆成两个四分', () => {
+  const abc = C.stepToABCGlobal(stepFrom([1 / 4, 1 / 2, 1 / 4]), { minValue: 1 / 16 });
+  assert.ok(abc.includes('B B- B B'), abc);
+});
+
+ok('4/4：从强拍起的完整时值不受限', () => {
+  /* 第 1 拍上的附点二分可以跨过半分点，不需要拆 */
+  const abc = C.stepToABCGlobal(stepFrom([3 / 4, 1 / 4]), { minValue: 1 / 16 });
+  assert.ok(abc.includes('B3 B'), abc);
+  assert.ok(!abc.includes('-'), '不该出现延音线：' + abc);
+});
+
+ok('4/4：第 2 拍起的附点二分会跨过半小节，要拆', () => {
+  const abc = C.stepToABCGlobal(stepFrom([1 / 4, 3 / 4]), { minValue: 1 / 16 });
+  assert.ok(abc.includes('B B- B2'), abc);
+});
+
+ok('3/4：第 2 拍上的二分不拆（3/4 没有半分点）', () => {
+  const abc = C.stepToABCGlobal(stepFrom([1 / 4, 1 / 2]), { minValue: 1 / 16, meter: [3, 4] });
+  assert.ok(abc.includes('B B2'), abc);
+  assert.ok(!abc.includes('-'), abc);
+});
+
+ok('12/8：第 3 个附点拍起的长音不拆（半分点在正中间）', () => {
+  const abc = C.stepToABCGlobal(stepFrom([3 / 8, 3 / 8, 3 / 4]), { minValue: 1 / 16, meter: [12, 8] });
+  assert.ok(abc.includes('B3 B3 B6'), abc);
+});
+
+ok('拆开时不会丢掉跨小节原有的延音线', () => {
+  /* [3/4, 3/4]：第二个音在第 4 拍起、跨过小节线，本来就要连；
+     组合法再把它按拍点切开之后，这两条线都得在 */
+  const abc = C.stepToABCGlobal(stepFrom([3 / 4, 3 / 4]), { minValue: 1 / 16 });
+  assert.ok(abc.includes('B3 B- | B2'), abc);
+});
 
 console.log('\n拍号与节拍层级');
 

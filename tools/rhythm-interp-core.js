@@ -675,6 +675,85 @@
 
   /* 全局量化（记谱用，勿与上面的网格量化 quantizeStep 混淆）：
      返回 { segments, groups, cost, maxError, endError, layers } */
+  function isOnGrid(t, grid) {
+    if (!(grid > 0)) return false;
+    const q = t / grid;
+    return Math.abs(q - Math.round(q)) < 1e-6;
+  }
+
+  /* 音值组合法：跨单位拍的音不能写成一个音符，要在拍点拆开、用延音线连接。
+     规则（与通行记谱惯例一致）：
+       1. 起点不在拍点上的音，不得跨过任何拍点；
+       2. 起点在拍点上、但不在更强一级（小节线，以及 4/4、12/8 的半分点）上的音，
+          不得跨过那一级的界线；
+       3. 从强拍开始的完整时值不受限（4/4 里第 1 拍上的附点二分可以跨过半分点）。
+     连音括号内部不拆：括号本身已经界定了分组，拆进去反而不合惯例。 */
+  function applyMetricGrouping(groups, meter, barLength, beatLength, minValue) {
+    const half = (meter.num % 4 === 0) ? barLength / 2 : null;
+    const unit = (minValue || 1 / 16) / 2;
+    const isLevel1 = function (t) {
+      if (isOnGrid(t, barLength)) return true;
+      return half != null && isOnGrid(t, half);
+    };
+    /* (start, end) 里第一个必须拆开的界线；没有则返回 null */
+    const nextCut = function (start, end) {
+      let cut = null;
+      if (!isOnGrid(start, beatLength)) {
+        const p = (Math.floor(start / beatLength + 1e-9) + 1) * beatLength;
+        if (p < end - 1e-9) cut = p;
+      }
+      if (half != null && !isLevel1(start)) {
+        const p = (Math.floor(start / half + 1e-9) + 1) * half;
+        if (p < end - 1e-9 && (cut === null || p < cut)) cut = p;
+      }
+      return cut;
+    };
+    const splitAtBoundaries = function (start, end) {
+      const cut = nextCut(start, end);
+      /* 切出来太窄就放弃，避免死循环（正常节奏不会遇到） */
+      if (cut === null || cut <= start + unit * 0.5 || cut >= end - unit * 0.5) {
+        return [end - start];
+      }
+      return splitAtBoundaries(start, cut).concat(splitAtBoundaries(cut, end));
+    };
+
+    let t = 0;
+    groups.forEach(function (g) {
+      if (g.kind === 'bracket') {
+        const scale = g.Q / g.P;
+        g.symbols.forEach(function (s) { t += s.value * scale; });
+        return;
+      }
+      const out = [];
+      g.symbols.forEach(function (s) {
+        const segs = splitAtBoundaries(t, t + s.value);
+        const vals = [];
+        segs.forEach(function (seg) {
+          const parts = decomposeWritten(seg / unit, unit, minValue || 1 / 16);
+          /* 拆出来的标准音符值之和必须还原原时长，否则退回原值，免得总量走样 */
+          const sum = parts ? parts.reduce(function (a, b) { return a + b; }, 0) : 0;
+          if (parts && Math.abs(sum - seg) < 1e-9) {
+            parts.forEach(function (v) { vals.push(v); });
+          } else {
+            vals.push(seg);
+          }
+        });
+        vals.forEach(function (v, i) {
+          out.push({
+            value: v,
+            /* 休止不连延音线；拆出来的各段之间要连；
+               最后一段还要保留原来的延音线（跨小节被切开的那种） */
+            tieToNext: !s.rest && (i < vals.length - 1 || !!s.tieToNext),
+            rest: !!s.rest
+          });
+        });
+        t += s.value;
+      });
+      g.symbols = out;
+    });
+    return groups;
+  }
+
   function quantizeNotation(step, options) {
     options = options || {};
     const minValue = options.minValue || 1 / 16;
@@ -806,6 +885,8 @@
       };
     });
     const maxError = segments.reduce(function (mx, s) { return Math.max(mx, s.err); }, 0);
+    /* 音值组合法：把跨单位拍的音按拍点拆开、加延音线 */
+    applyMetricGrouping(groups, meter, barLength, beatLength, minValue);
     /* 全局漂移：每个音符起点相对原节奏的累计偏差（这才是耳朵听到的误差） */
     let drift = 0;
     let maxDrift = 0;
