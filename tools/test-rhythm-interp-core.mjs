@@ -391,6 +391,88 @@ ok('MIDI 也可导出成有音高的单通道', () => {
   assert.ok(b.includes(62), '应当带上指定的音高');
 });
 
+/* ---------- 休止符 ---------- */
+
+console.log('\n休止符');
+
+ok('解析休止符：z/r 加时值，光写 z 沿用前一个', () => {
+  const r = C.parseRhythmDetailed('1/8 z1/8 1/4 r1/2');
+  assert.deepEqual(r.values, [0.125, 0.125, 0.25, 0.5]);
+  assert.deepEqual(r.rests, [false, true, false, true]);
+
+  const inherit = C.parseRhythmDetailed('1/4 z z');
+  assert.deepEqual(inherit.values, [0.25, 0.25, 0.25]);
+  assert.deepEqual(inherit.rests, [false, true, true]);
+
+  /* 开头的裸 z 按四分音符 */
+  assert.deepEqual(C.parseRhythmDetailed('z 1/8').values, [0.25, 0.125]);
+  /* parseRhythm 仍然只返回时值，向后兼容 */
+  assert.deepEqual(C.parseRhythm('1/8 z1/8'), [0.125, 0.125]);
+  assert.throws(() => C.parseRhythm('0 -1'));
+});
+
+ok('休止合流规则：两端都是休止才是休止', () => {
+  assert.deepEqual(C.mergeRests([true, false, true], [true, true, false]), [true, false, false]);
+  assert.deepEqual(C.mergeRests(null, [true, false]), [true, false]);
+  assert.equal(C.mergeRests(null, null), null);
+});
+
+ok('休止的音不发声：MIDI 里被跳过', () => {
+  const values = [0.125, 0.125, 0.25];
+  const rests = [false, true, false];
+  const step = {
+    onsets: C.durationsToOnsets(values), durations: values,
+    total: C.totalDuration(values), rests: rests
+  };
+  const out = C.buildRhythmMidi(step, {});
+  assert.equal(out.eventCount, 2, '三个事件里应只有两个发声');
+});
+
+/* ---------- 多声部 ---------- */
+
+console.log('\n多声部');
+
+ok('多声部 MIDI：format 1，第一轨是速度轨', () => {
+  const s1 = stepFrom([1 / 4, 1 / 4]);
+  const s2 = stepFrom([1 / 8, 1 / 8, 1 / 4]);
+  const out = C.buildRhythmMidiMulti([s1, s2], { bpm: 120 });
+  const b = Array.from(out.bytes);
+  assert.equal((b[8] << 8) | b[9], 1, '应当是 format 1');
+  assert.equal((b[10] << 8) | b[11], 3, '速度轨 + 两条声部轨');
+  assert.equal(out.tracks, 2);
+  assert.equal(out.eventCount, 5);
+});
+
+/* ---------- 嵌套连音 ---------- */
+
+console.log('\n嵌套连音');
+
+ok('嵌套写法 3:2*3:2 约分成 9:4', () => {
+  assert.deepEqual(C.parseTupletToken('3:2*3:2'), [9, 4]);
+  assert.deepEqual(C.parseTupletToken('5:4'), [5, 4]);
+  assert.equal(C.parseTupletToken('乱写'), null);
+  assert.deepEqual(C.parseTuplets('3:2*3:2, 5:4'), [[9, 4], [5, 4]]);
+});
+
+ok('嵌套读法：9:4 能读成 3:2 套 3:2', () => {
+  const readings = C.nestedTupletReadings(9, 4);
+  assert.ok(readings.length > 0);
+  assert.deepEqual(readings[0].outer, [3, 2]);
+  assert.deepEqual(readings[0].inner, [3, 2]);
+  assert.equal(readings[0].common, true, '两边都是常用连音，应排在最前');
+  /* 先约分：12:8 就是 3:2，谈不上嵌套 */
+  assert.deepEqual(C.nestedTupletReadings(12, 8), []);
+});
+
+ok('嵌套比例在记谱层摊平成一个等价括号', () => {
+  /* 9:4 的 P=9 仍在 abcjs 的个位数上限内，可以直接写 (9:4 */
+  const step = stepFrom(Array(9).fill(1 / 9));
+  const q = C.quantizeNotation(step, { minValue: 1 / 32, tuplets: [[9, 4]] });
+  const abc = C.abcFromQuantized(q, { minValue: 1 / 32, tuplets: [[9, 4]] });
+  assert.ok(!abc.includes('(9:4:1'), abc);
+  assert.ok(abc.includes('(9:4'), abc);
+});
+
 ok('括号最多覆盖 n 个书面单位（不写超大括号）', () => {
   /* 12 个三连音八分 = 四个 3:2 括号，而不是一个跨两拍的巨括号 */
   const step = stepFrom(Array(12).fill(1 / 12));

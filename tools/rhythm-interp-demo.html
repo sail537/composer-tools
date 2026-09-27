@@ -98,25 +98,24 @@
   <h1>节奏插值 Demo <span class="sub">Rhythm Interpolation · OpenMusic 同构</span></h1>
 
   <section class="card">
-    <h2>1 · 两个节奏</h2>
-    <div class="row">
-      <div class="field" style="flex:1 1 320px">
-        <label>节奏 A（时值）</label>
-        <input type="text" id="a-text" spellcheck="false" value="1/8 1/8 1/4 1/2">
-      </div>
-      <div class="field" style="flex:1 1 320px">
-        <label>节奏 B（时值）</label>
-        <input type="text" id="b-text" spellcheck="false" value="1/16 1/16 1/16 5/16">
-      </div>
+    <h2>1 · 节奏（可多声部）</h2>
+    <div id="voices"></div>
+    <div class="controls" style="margin-top:10px">
+      <button type="button" id="add-voice">添加声部</button>
+      <span class="inline">每行一个声部：A 是起点、B 是终点。多声部会一起插值，
+        五线谱按总谱显示、MIDI 按每声部一条轨导出。</span>
     </div>
-    <div class="field hint">时值以 <b>全音符 = 1</b>：<span class="mono">1/4</span> = 四分音符 = 1 拍，
-      <span class="mono">1/8</span> = 八分音符，<span class="mono">1/12</span> = 三连音八分音符；空格或逗号分隔。</div>
+    <div class="field hint" style="margin-top:8px">时值以 <b>全音符 = 1</b>：<span class="mono">1/4</span> = 四分音符 = 1 拍，
+      <span class="mono">1/8</span> = 八分音符，<span class="mono">1/12</span> = 三连音八分音符；空格或逗号分隔。
+      <b>休止</b>写 <span class="mono">z1/8</span> 或 <span class="mono">r1/8</span>，只写 <span class="mono">z</span> 就沿用前一个时值。
+      只有两端都是休止的位置，插值结果才是休止。</div>
     <div class="presets" style="margin-top:10px">
       <button type="button" id="preset-equal">等长示例（逐项时值）</button>
       <button type="button" id="preset-unequal">不等长示例（时间弯曲）</button>
       <button type="button" id="preset-triplet">三连音示例</button>
       <button type="button" id="preset-quint">五连音示例</button>
       <button type="button" id="preset-sept">七连音示例</button>
+      <button type="button" id="preset-rest">双声部 + 休止示例</button>
     </div>
   </section>
 
@@ -202,6 +201,7 @@
           <span class="mono">3:2</span> 三连音、<span class="mono">5:4</span> 五连音、
           <span class="mono">7:4</span> 七连音、<span class="mono">6:4</span> 六连音、
           <span class="mono">2:3</span> 二连音（复合拍）。留空或用无效写法 = 默认值。</div>
+        <div class="hint" id="tuplet-nest" style="margin-top:5px"></div>
       </div>
     </div>
     <div class="presets" style="margin-top:8px">
@@ -262,6 +262,59 @@
   var lastResult = null;
   var lastSVG = '';
   var staffItems = [];
+  /* 声部列表：每项 { a, b } 是两端的节奏文本。休止符写 z1/8，只写 z 沿用前一个时值。 */
+  var rhythmVoices = [{ a: '1/8 1/8 1/4 1/2', b: '1/16 1/16 1/16 5/16' }];
+  var lastResults = [];
+
+  function stepOf(durations, rests) {
+    return {
+      onsets: C.durationsToOnsets(durations),
+      durations: durations,
+      total: C.totalDuration(durations),
+      rests: rests || null
+    };
+  }
+
+  /* 声部输入行 */
+  function renderVoiceRows() {
+    var host = $('voices');
+    host.innerHTML = '';
+    rhythmVoices.forEach(function (v, i) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginBottom = '8px';
+      [['a', 'A（起点）'], ['b', 'B（终点）']].forEach(function (pair) {
+        var field = document.createElement('div');
+        field.className = 'field';
+        field.style.flex = '1 1 300px';
+        var label = document.createElement('label');
+        label.textContent = '声部 ' + (i + 1) + ' · ' + pair[1];
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.spellcheck = false;
+        input.value = v[pair[0]];
+        input.setAttribute('data-voice', String(i));
+        input.setAttribute('data-end', pair[0]);
+        field.appendChild(label);
+        field.appendChild(input);
+        row.appendChild(field);
+      });
+      if (rhythmVoices.length > 1) {
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'ghost';
+        remove.textContent = '✕';
+        remove.title = '删除这个声部';
+        remove.addEventListener('click', function () {
+          rhythmVoices.splice(i, 1);
+          renderVoiceRows();
+          render();
+        });
+        row.appendChild(remove);
+      }
+      host.appendChild(row);
+    });
+  }
 
   function isDark() {
     return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -269,30 +322,41 @@
 
   function render() {
     try {
-      var a = C.parseRhythm($('a-text').value);
-      var b = C.parseRhythm($('b-text').value);
       var samples = Math.max(1, Math.min(64, parseInt($('samples').value, 10) || 5));
       var curve = parseFloat($('curve').value) || 0;
       var strategy = $('strategy').value;
-      lastResult = C.interpolateRhythm(a, b, samples, curve, strategy);
+      lastResults = rhythmVoices.map(function (v) {
+        var pa = C.parseRhythmDetailed(v.a);
+        var pb = C.parseRhythmDetailed(v.b);
+        return C.interpolateRhythm(pa.values, pb.values, samples, curve, strategy,
+          { restsA: pa.rests, restsB: pb.rests });
+      });
+      lastResult = lastResults[0] || null;
       lastSVG = C.renderTimelineSVG(lastResult, { dark: isDark() });
-      $('timeline').innerHTML = lastSVG;
+      $('timeline').innerHTML = lastResults.map(function (r, i) {
+        var head = lastResults.length > 1
+          ? '<div class="staff-label">声部 ' + (i + 1) + '</div>' : '';
+        return head + C.renderTimelineSVG(r, { dark: isDark() });
+      }).join('');
       renderTable();
       renderStaves();
       var maxTotal = Math.max.apply(null, lastResult.steps.map(function (s) { return s.total; }));
       $('summary').innerHTML = '<b>' + lastResult.steps.length + '</b> 个中间状态 · 最大总时长 <b>'
         + C.formatNumber(maxTotal * 4, 2) + '</b> 拍（' + C.formatNumber(maxTotal, 3) + ' 个全音符）· 策略：'
-        + (strategy === 'dx' ? '逐项时值（OM INTERPOLATION on dx）' : '时间弯曲（BPF / 归一化索引）');
+        + (strategy === 'dx' ? '逐项时值（OM INTERPOLATION on dx）' : '时间弯曲（BPF / 归一化索引）')
+        + (lastResults.length > 1 ? ' · <b>' + lastResults.length + '</b> 个声部（下表与时间线按声部 1）' : '');
       $('status').textContent = '';
       reportState();
     } catch (err) {
       lastResult = null;
+      lastResults = [];
       lastSVG = '';
       $('timeline').innerHTML = '<div class="empty status">' + err.message + '</div>';
       $('summary').textContent = '';
       $('tbody').innerHTML = '';
       $('staves').innerHTML = '';
       $('status').textContent = err.message;
+      reportState({ jsError: err.message });
     }
   }
 
@@ -316,7 +380,7 @@
     var host = $('staves');
     host.innerHTML = '';
     staffItems = [];
-    if (!lastResult) return;
+    if (!lastResults.length) return;
     if (!window.ABCJS) {
       host.innerHTML = '<div class="empty status">abcjs 未加载</div>';
       return;
@@ -326,13 +390,19 @@
     var preferTuplets = $('prefer-tuplets').checked;
     var engine = $('engine').value;
     var meter = $('meter').value.split('/').map(Number);
+    var opts = { minValue: minValue, tuplets: tuplets, preferTuplets: preferTuplets, meter: meter };
+    describeNesting(tuplets);
     var items = [
-      { label: 'A（起点节奏）', step: { onsets: C.durationsToOnsets(lastResult.a), durations: lastResult.a, total: C.totalDuration(lastResult.a) } },
-      { label: 'B（终点节奏）', step: { onsets: C.durationsToOnsets(lastResult.b), durations: lastResult.b, total: C.totalDuration(lastResult.b) } }
+      { label: 'A（起点节奏）', steps: lastResults.map(function (r) { return stepOf(r.a, r.rests); }) },
+      { label: 'B（终点节奏）', steps: lastResults.map(function (r) { return stepOf(r.b, r.rests); }) }
     ];
-    lastResult.steps.forEach(function (step, j) {
-      items.push({ label: '#' + (j + 1), step: step });
-    });
+    var stateCount = Math.max.apply(null, lastResults.map(function (r) { return r.steps.length; }));
+    for (var j = 0; j < stateCount; j++) {
+      items.push({
+        label: '#' + (j + 1),
+        steps: lastResults.map(function (r) { return r.steps[j]; }).filter(Boolean)
+      });
+    }
     items.forEach(function (item) {
       var block = document.createElement('div');
       block.className = 'staff-block';
@@ -345,22 +415,24 @@
       block.appendChild(score);
       host.appendChild(block);
       try {
-        var opts = { minValue: minValue, tuplets: tuplets, preferTuplets: preferTuplets,
-                     meter: meter, title: item.label };
         var abc;
         var info;
         if (engine === 'global') {
-          var quantized = C.quantizeNotation(item.step, opts);
-          abc = C.abcFromQuantized(quantized, opts);
-          var errBeats = quantized.maxError * 4;
-          info = (quantized.maxError < 1e-9)
+          /* 全局量化：所有声部合成一张总谱，共用同一个 L 与小节数 */
+          var quantized = item.steps.map(function (st) {
+            return C.quantizeNotation(st, Object.assign({ title: item.label }, opts));
+          });
+          abc = C.abcFromQuantizedMulti(quantized, Object.assign({ title: item.label }, opts));
+          var worst = quantized.reduce(function (mx, q) { return Math.max(mx, q.maxError); }, 0);
+          info = (worst < 1e-9)
             ? '精确记谱'
-            : '最大记谱误差 ' + C.formatNumber(errBeats, 3) + ' 拍（'
-              + C.formatNumber(quantized.maxError / minValue * 100, 1) + '% 最小音符值'
+            : '最大记谱误差 ' + C.formatNumber(worst * 4, 3) + ' 拍（'
+              + C.formatNumber(worst / minValue * 100, 1) + '% 最小音符值'
               + (minValue > 0.0157 ? ' · 把最小音符值调细可精确记谱' : '') + '）';
         } else {
-          abc = C.stepToABC(item.step, opts);
-          info = '等值连音扫描';
+          /* 经典引擎只做单声部；多声部时按声部逐个画 */
+          abc = C.stepToABC(item.steps[0], Object.assign({ title: item.label }, opts));
+          info = '等值连音扫描' + (item.steps.length > 1 ? '（经典引擎只画声部 1）' : '');
         }
         if (info) {
           var infoNode = document.createElement('span');
@@ -376,15 +448,37 @@
         });
         var svgEl = score.querySelector('svg');
         staffItems.push({
-          label: item.label, step: item.step, abc: abc,
+          label: item.label, steps: item.steps, abc: abc,
           svg: svgEl ? svgEl.outerHTML : ''
         });
       } catch (err) {
         score.innerHTML = '<div class="empty status">记谱失败：' + err.message + '</div>';
-        staffItems.push({ label: item.label, step: item.step, abc: '', svg: '' });
+        staffItems.push({ label: item.label, steps: item.steps, abc: '', svg: '' });
       }
     });
     fillExportSteps();
+  }
+
+  /* 嵌套连音说明：n:m 若能拆成两层（a:b 套 c:d），就在这里写出来。
+     abcjs 画不出嵌套括号，所以记谱一律摊平成单个等价比例。 */
+  function describeNesting(pairs) {
+    var el = $('tuplet-nest');
+    if (!el) return;
+    var notes = [];
+    pairs.forEach(function (p) {
+      var r = C.reduceRatio(p[0], p[1]);
+      if (!r) return;
+      var readings = C.nestedTupletReadings(r[0], r[1]);
+      if (!readings.length) return;
+      var best = readings[0];
+      notes.push('<span class="mono">' + r[0] + ':' + r[1] + '</span> = '
+        + best.outer[0] + ':' + best.outer[1] + ' 套 ' + best.inner[0] + ':' + best.inner[1]
+        + '（记谱已摊平成一个 ' + r[0] + ':' + r[1] + ' 括号）');
+    });
+    el.innerHTML = notes.length
+      ? '嵌套读法：' + notes.join('；')
+      : '提示：嵌套连音可以直接写成乘积，例如 <span class="mono">3:2*3:2</span>（三连音里套三连音），'
+        + '会自动约分成 <span class="mono">9:4</span>。abcjs 不能画嵌套括号，记谱会摊平。';
   }
 
   /* 导出步骤下拉：把当前算出的每一步都列出来 */
@@ -439,21 +533,30 @@
   }
 
   function play() {
-    if (!lastResult) { render(); }
-    if (!lastResult) return;
+    if (!lastResults.length) { render(); }
+    if (!lastResults.length) return;
     audio();
     stopAudio();
     var bpm = Math.max(30, Math.min(300, parseFloat($('bpm').value) || 120));
     var beatSeconds = 60 / bpm;
     var wholeNoteSeconds = beatSeconds * 4;   /* 时值单位是全音符 */
     var cursor = actx.currentTime + 0.12;
-    lastResult.steps.forEach(function (step, j) {
+    var stateCount = Math.max.apply(null, lastResults.map(function (r) { return r.steps.length; }));
+    for (var j = 0; j < stateCount; j++) {
       var stepStart = cursor;
-      step.onsets.forEach(function (onset) {
-        click(stepStart + onset * wholeNoteSeconds, j);
+      var longest = 0;
+      /* 多声部同时响：所有声部的第 j 步叠在一起 */
+      lastResults.forEach(function (r, vi) {
+        var step = r.steps[j];
+        if (!step) return;
+        longest = Math.max(longest, step.total);
+        step.onsets.forEach(function (onset, k) {
+          if (step.rests && step.rests[k]) return;   /* 休止不发声 */
+          click(stepStart + onset * wholeNoteSeconds, vi);
+        });
       });
-      cursor = stepStart + step.total * wholeNoteSeconds + 0.3;
-    });
+      cursor = stepStart + longest * wholeNoteSeconds + 0.3;
+    }
     $('status').textContent = '播放中…';
     reportState({ playing: true });
     var total = (cursor - actx.currentTime) * 1000;
@@ -476,9 +579,26 @@
   }
 
   /* ---------- 事件 ---------- */
-  ['a-text', 'b-text', 'samples', 'strategy'].forEach(function (id) {
+  ['samples', 'strategy'].forEach(function (id) {
     $(id).addEventListener('input', render);
     $(id).addEventListener('change', render);
+  });
+  /* 声部输入用事件委托：行是动态生成的 */
+  $('voices').addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+    var vi = parseInt(el.getAttribute('data-voice'), 10);
+    var end = el.getAttribute('data-end');
+    if (!isFinite(vi) || !end || !rhythmVoices[vi]) return;
+    rhythmVoices[vi][end] = el.value;
+    render();
+  });
+  $('add-voice').addEventListener('click', function () {
+    if (rhythmVoices.length >= 8) return;
+    var last = rhythmVoices[rhythmVoices.length - 1];
+    rhythmVoices.push({ a: last.b, b: last.a });   /* 新声部从上一个声部的两端接过来，方便改 */
+    renderVoiceRows();
+    render();
   });
   $('curve').addEventListener('input', function () {
     $('curve-read').textContent = parseFloat(this.value).toFixed(2);
@@ -522,42 +642,53 @@
       return;
     }
     var meter = $('meter').value.split('/').map(Number);
-    var out = C.buildRhythmMidi(item.step, {
-      bpm: 120, meter: meter, percussion: true,
-      trackName: 'Rhythm ' + item.label
-    });
+    var out = item.steps.length > 1
+      ? C.buildRhythmMidiMulti(item.steps, { bpm: 120, meter: meter, percussion: true,
+                                             trackName: 'Rhythm ' + item.label })
+      : C.buildRhythmMidi(item.steps[0], { bpm: 120, meter: meter, percussion: true,
+                                           trackName: 'Rhythm ' + item.label });
     var name = 'rhythm-' + item.label.replace(/[^\w#]+/g, '') + '-midi.mid';
     download(new Blob([out.bytes], { type: 'audio/midi' }), name);
-    $('status').textContent = '已导出 ' + name + '（' + out.eventCount + ' 个音）';
+    $('status').textContent = '已导出 ' + name + '（' + out.eventCount + ' 个音'
+      + (out.tracks ? '，' + out.tracks + ' 条声部轨' : '') + '）';
   });
   $('preset-equal').addEventListener('click', function () {
-    $('a-text').value = '1/8 1/8 1/4 1/2';
-    $('b-text').value = '1/16 1/16 1/16 5/16';
+    rhythmVoices = [{ a: '1/8 1/8 1/4 1/2', b: '1/16 1/16 1/16 5/16' }];
     $('strategy').value = 'dx';
+    renderVoiceRows();
     render();
   });
   $('preset-unequal').addEventListener('click', function () {
-    $('a-text').value = '1/8 1/8 1/4 1/2';
-    $('b-text').value = '1/16 1/16 1/16 1/16 1/4';
+    rhythmVoices = [{ a: '1/8 1/8 1/4 1/2', b: '1/16 1/16 1/16 1/16 1/4' }];
     $('strategy').value = 'warp';
+    renderVoiceRows();
     render();
   });
   $('preset-triplet').addEventListener('click', function () {
-    $('a-text').value = '1/12 1/12 1/12 1/4';
-    $('b-text').value = '1/12 1/12 1/12 1/2';
+    rhythmVoices = [{ a: '1/12 1/12 1/12 1/4', b: '1/12 1/12 1/12 1/2' }];
     $('strategy').value = 'dx';
+    renderVoiceRows();
     render();
   });
   $('preset-quint').addEventListener('click', function () {
-    $('a-text').value = '1/20 1/20 1/20 1/20 1/20 1/4';
-    $('b-text').value = '1/20 1/20 1/20 1/20 1/20 1/2';
+    rhythmVoices = [{ a: '1/20 1/20 1/20 1/20 1/20 1/4', b: '1/20 1/20 1/20 1/20 1/20 1/2' }];
     $('strategy').value = 'warp';
+    renderVoiceRows();
     render();
   });
   $('preset-sept').addEventListener('click', function () {
-    $('a-text').value = '1/28 1/28 1/28 1/28 1/28 1/28 1/28 1/4';
-    $('b-text').value = '1/28 1/28 1/28 1/28 1/28 1/28 1/28 1/2';
+    rhythmVoices = [{ a: '1/28 1/28 1/28 1/28 1/28 1/28 1/28 1/4', b: '1/28 1/28 1/28 1/28 1/28 1/28 1/28 1/2' }];
     $('strategy').value = 'warp';
+    renderVoiceRows();
+    render();
+  });
+  $('preset-rest').addEventListener('click', function () {
+    voices = [
+      { a: '1/8 z1/8 1/4 1/2', b: '1/16 z1/16 1/16 5/16' },
+      { a: '1/4 z1/4 1/2', b: '1/8 1/8 z1/2' }
+    ];
+    $('strategy').value = 'dx';
+    renderVoiceRows();
     render();
   });
   var tupletPresets = {
@@ -592,6 +723,7 @@
     var info = {
       tool: 'rhythm',
       steps: lastResult ? lastResult.steps.length : 0,
+      voiceCount: rhythmVoices.length,
       samples: lastResult ? lastResult.samples : 0,
       curve: lastResult ? lastResult.curve : 0,
       strategy: lastResult ? lastResult.strategy : $('strategy').value,
@@ -627,6 +759,7 @@
     });
   }, 1000);
 
+  renderVoiceRows();
   render();
   reportState();
 })();

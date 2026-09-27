@@ -17,27 +17,47 @@
 
   /* ---------- 输入解析 ---------- */
 
-  /* 支持：0.25 / 1/8 / 1/4 / 1/16 之类的时值；空格、逗号、竖线分隔 */
-  function parseRhythm(text) {
+  /* 支持：0.25 / 1/8 / 1/4 / 1/16 之类的时值；空格、逗号、竖线分隔。
+     休止符写 z 或 r，后面跟时值（z1/8）；只写 z 就沿用前一个时值，
+     出现在开头则按四分音符（1/4）。 */
+  function parseRhythmDetailed(text) {
     const tokens = String(text).split(/[\s,;、，|]+/).filter(Boolean);
-    const out = [];
+    const values = [];
+    const rests = [];
     for (const token of tokens) {
+      const restMatch = token.match(/^([zrZR])(.*)$/);
+      const isRest = !!restMatch;
+      const body = restMatch ? restMatch[2] : token;
       let value;
-      if (token.includes('/')) {
-        const parts = token.split('/');
-        const numerator = Number(parts[0]);
-        const denominator = Number(parts[1]);
-        value = numerator / denominator;
+      if (body === '') {
+        /* 光写 z / r：沿用前一个时值 */
+        value = values.length ? values[values.length - 1] : 0.25;
+      } else if (body.includes('/')) {
+        const parts = body.split('/');
+        value = Number(parts[0]) / Number(parts[1]);
       } else {
-        value = Number(token);
+        value = Number(body);
       }
       if (!Number.isFinite(value) || value <= 0) {
         throw new Error('无法识别：' + token);
       }
-      out.push(value);
+      values.push(value);
+      rests.push(isRest);
     }
-    if (!out.length) throw new Error('节奏不能为空');
-    return out;
+    if (!values.length) throw new Error('节奏不能为空');
+    return { values: values, rests: rests };
+  }
+
+  function parseRhythm(text) {
+    return parseRhythmDetailed(text).values;
+  }
+
+  /* 把 A/B 两端的休止合并成中间的休止：
+     只有两端都是休止时，中间才是休止；一端有音就当作有音。
+     否则「音符渐变为休止」这种插值在记谱上没法表达。 */
+  function mergeRests(ra, rb) {
+    if (!ra || !rb) return ra || rb || null;
+    return ra.map(function (r, i) { return r && !!rb[i]; });
   }
 
   function formatNumber(value, digits) {
@@ -157,8 +177,11 @@
 
   /* ---------- 统一入口 ---------- */
 
-  function interpolateRhythm(a, b, samples, curve, strategy) {
+  function interpolateRhythm(a, b, samples, curve, strategy, options) {
+    options = options || {};
     if (!a.length || !b.length) throw new Error('节奏不能为空');
+    /* 休止信息可选：来自 A/B 的解析结果，两端都为休止才是休止 */
+    const rests = mergeRests(options.restsA, options.restsB);
     if (strategy === 'dx') {
       if (a.length !== b.length) {
         throw new Error('“逐项时值”要求两个节奏长度相同（' + a.length + ' vs ' + b.length +
@@ -170,6 +193,7 @@
         curve: curve,
         a: a,
         b: b,
+        rests: rests,
         steps: interpolateEqualDurations(a, b, samples, curve)
       };
     }
@@ -179,6 +203,7 @@
       curve: curve,
       a: a,
       b: b,
+      rests: rests,
       steps: interpolateWarp(a, b, samples, curve)
     };
   }
@@ -240,13 +265,62 @@
 
   function canRenderTuplet(n, m) { return !!splitTuplet(n, m); }
 
+  /* 一个连音 token → [n, m]。支持嵌套写法：3:2*3:2 → 9:4（外层 3:2 套内层 3:2）。 */
+  function parseTupletToken(token) {
+    const parts = String(token).split(/[*x×]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!parts.length) return null;
+    let n = 1;
+    let m = 1;
+    for (const part of parts) {
+      const match = part.match(/^(\d+)\s*:\s*(\d+)$/);
+      if (!match) return null;
+      n *= parseInt(match[1], 10);
+      m *= parseInt(match[2], 10);
+    }
+    return [n, m];
+  }
+
   function parseTuplets(text) {
     const out = [];
     String(text).split(/[\s,;、，]+/).filter(Boolean).forEach(function (token) {
-      const match = token.match(/^(\d+)\s*:\s*(\d+)$/);
-      if (match) out.push([parseInt(match[1], 10), parseInt(match[2], 10)]);
+      const pair = parseTupletToken(token);
+      if (pair) out.push(pair);
     });
     return out.length ? out : DEFAULT_TUPLETS.slice();
+  }
+
+  /* 把一个连音比例拆成两层嵌套读法：n:m = (a:b) 套 (c:d)，即 a·c : b·d。
+     返回所有合法读法，两边都是常用连音时排在前头。 */
+  function nestedTupletReadings(n, m, maxP) {
+    const limit = maxP || ABC_MAX_TUPLET;
+    /* 先约分：12:8 就是 3:2，谈不上嵌套 */
+    const rr = reduceRatio(n, m);
+    if (rr) { n = rr[0]; m = rr[1]; }
+    const common = DEFAULT_TUPLETS.map(function (p) {
+      const r = reduceRatio(p[0], p[1]);
+      return r[0] + ':' + r[1];
+    });
+    const out = [];
+    for (let a = 2; a <= Math.min(n, limit); a++) {
+      if (n % a) continue;
+      const c = n / a;
+      if (c < 2 || c > limit) continue;
+      for (let b = 1; b <= Math.min(m, limit); b++) {
+        if (m % b) continue;
+        const d = m / b;
+        if (d < 1 || d > limit) continue;
+        const outer = reduceRatio(a, b);
+        const inner = reduceRatio(c, d);
+        if (!outer || !inner) continue;
+        const key = outer[0] + ':' + outer[1] + '*' + inner[0] + ':' + inner[1];
+        if (out.some(function (r) { return r.key === key; })) continue;
+        const known = common.indexOf(outer[0] + ':' + outer[1]) >= 0
+          && common.indexOf(inner[0] + ':' + inner[1]) >= 0;
+        out.push({ key: key, outer: outer, inner: inner, common: known });
+      }
+    }
+    out.sort(function (x, y) { return (y.common ? 1 : 0) - (x.common ? 1 : 0); });
+    return out;
   }
 
   function isClose(a, b, eps) { return Math.abs(a - b) < (eps === undefined ? 1e-6 : eps); }
@@ -537,10 +611,10 @@
   }
 
   /* 跨小节的音在小节线上切开，切开处以后用延音线连起来 */
-  function splitPiecesAtBars(durations, barLength) {
+  function splitPiecesAtBars(durations, barLength, rests) {
     const pieces = [];
     let cursor = 0;
-    durations.forEach(function (d) {
+    durations.forEach(function (d, di) {
       const end = cursor + d;
       let start = cursor;
       let guard = 0;
@@ -552,7 +626,8 @@
           tieNext: end - pieceEnd > 1e-9,
           bar: index,
           start: start,
-          end: pieceEnd
+          end: pieceEnd,
+          rest: !!(rests && rests[di])
         });
         start = pieceEnd;
       }
@@ -622,7 +697,8 @@
     const durations = onsets.map(function (x, i) {
       return (i < onsets.length - 1 ? onsets[i + 1] : total) - x;
     });
-    const pieces = splitPiecesAtBars(durations, barLength);
+    const rests = options.rests || step.rests || null;
+    const pieces = splitPiecesAtBars(durations, barLength, rests);
     const n = pieces.length;
     const best = new Array(n + 1).fill(null);
     best[0] = { cost: 0, from: -1, layer: null, parts: null, actual: 0, err: 0 };
@@ -660,7 +736,7 @@
           atoms += m;
           actualSum += piece.dur;
           if (piece.tieNext) pieceTies += 1;
-          partsList.push({ parts: parts, tie: piece.tieNext });
+          partsList.push({ parts: parts, tie: piece.tieNext, rest: !!piece.rest });
 
           const ties = (symbols - partsList.length) + pieceTies;
           let cost = weights.error * errSum / (minValue * minValue);
@@ -711,7 +787,12 @@
       seg.parts.forEach(function (entry) {
         entry.parts.forEach(function (value, k) {
           const last = k === entry.parts.length - 1;
-          symbols.push({ value: value, tieToNext: !last || entry.tie });
+          /* 休止不连延音线：跨小节的休止就写成两个休止符 */
+          symbols.push({
+            value: value,
+            tieToNext: entry.rest ? false : (!last || entry.tie),
+            rest: !!entry.rest
+          });
         });
       });
       return {
@@ -755,17 +836,11 @@
     return group.symbols.reduce(function (sum, s) { return sum + s.value; }, 0);
   }
 
-  /* 把量化结果渲染成 ABC */
-  function abcFromQuantized(quantized, options) {
-    options = options || {};
-    const meter = parseMeter(options.meter);
-    const barLength = options.barLength || meter.barLength;
+  /* 一个量化结果在某个体值单位 L 下的音轨体。
+     targetTotal：补齐到至少这么长（多声部时各声部要对齐小节）。 */
+  function quantizedBody(quantized, options, L, targetTotal) {
+    const barLength = options.barLength || parseMeter(options.meter).barLength;
     const groups = quantized.groups || [];
-    const flat = [];
-    groups.forEach(function (g) {
-      g.symbols.forEach(function (s) { flat.push(s.value); });
-    });
-    const L = chooseABCUnit(flat.length ? flat : [1 / 16]);
     let body = '';
     let cursor = 0;
     let elapsed = 0;
@@ -774,7 +849,7 @@
       const units = g.symbols.map(function (s) { return Math.max(1, Math.round(s.value / L - 1e-9)); });
       const scale = g.kind === 'bracket' ? g.Q / g.P : 1;
       g.symbols.forEach(function (s, k) {
-        let token = abcNoteToken(units[k]);
+        let token = (s.rest ? 'z' : 'B') + (units[k] > 1 ? String(units[k]) : '');
         if (k === 0 && g.kind === 'bracket') {
           /* (P:Q:R —— 只有 R ≠ P 时才需要写第三个数（默认 R = P） */
           token = '(' + g.P + ':' + g.Q
@@ -792,7 +867,8 @@
     });
     /* 末小节补休止：不足一小节时用休止符填满，谱面才完整 */
     if (options.padFinalBar !== false && elapsed > 1e-9) {
-      const target = Math.ceil(elapsed / barLength - 1e-9) * barLength;
+      let target = Math.ceil(elapsed / barLength - 1e-9) * barLength;
+      if (targetTotal && targetTotal > target) { target = targetTotal; }
       const rest = target - elapsed;
       const parts = rest > 1e-9
         ? decomposeWritten(rest / L, L, options.minValue || 1 / 16)
@@ -805,10 +881,73 @@
       }
     }
     body += body.endsWith('|') ? ']' : ' |]';
-    const header = ['X:1', 'T:' + (options.title || ''), 'M:4/4',
+    return body;
+  }
+
+  function flattenedValues(quantized) {
+    const flat = [];
+    (quantized.groups || []).forEach(function (g) {
+      g.symbols.forEach(function (s) { flat.push(s.value); });
+    });
+    return flat;
+  }
+
+  /* 若干声部共用的最小音符单位：取各声部各自需要的 L 里最细的那个 */
+  function commonUnit(quantizedList) {
+    let best = 1;
+    quantizedList.forEach(function (q) {
+      const flat = flattenedValues(q);
+      const L = chooseABCUnit(flat.length ? flat : [1 / 16]);
+      if (L < best) best = L;
+    });
+    return best;
+  }
+
+  /* 把量化结果渲染成 ABC（单声部） */
+  function abcFromQuantized(quantized, options) {
+    options = options || {};
+    quantized = quantized || { groups: [] };
+    const meter = parseMeter(options.meter);
+    const flat = flattenedValues(quantized);
+    const L = chooseABCUnit(flat.length ? flat : [1 / 16]);
+    const body = quantizedBody(quantized, options, L);
+    const header = ['X:1', 'T:' + (options.title || ''), 'M:' + meter.num + '/' + meter.den,
                     'L:' + unitLabel(L), 'K:C clef=perc', 'V:1'];
-    header[2] = 'M:' + meter.num + '/' + meter.den;
     return header.join('\n') + '\n' + body;
+  }
+
+  /* 多声部：每个声部一个 quantizeNotation 结果，合成一张总谱。
+     各声部共用同一个 L 与同样的小节数，否则 abcjs 会觉得小节对不齐。 */
+  function abcFromQuantizedMulti(quantizedList, options) {
+    options = options || {};
+    const meter = parseMeter(options.meter);
+    const barLength = options.barLength || meter.barLength;
+    const list = (quantizedList || []).filter(Boolean);
+    if (!list.length) return abcFromQuantized(null, options);
+    const L = commonUnit(list);
+    let maxTotal = 0;
+    list.forEach(function (q) {
+      const groups = q.groups || [];
+      let t = 0;
+      groups.forEach(function (g) {
+        const scale = g.kind === 'bracket' ? g.Q / g.P : 1;
+        g.symbols.forEach(function (s) { t += s.value * scale; });
+      });
+      if (t > maxTotal) maxTotal = t;
+    });
+    const target = Math.ceil(maxTotal / barLength - 1e-9) * barLength;
+    const lines = ['X:1', 'T:' + (options.title || ''),
+                   'M:' + meter.num + '/' + meter.den,
+                   'L:' + unitLabel(L), 'K:C clef=perc'];
+    if (list.length > 1) {
+      /* {…} = 各声部单独一行谱表、用大括号连起来（复调总谱的常见样式） */
+      lines.push('%%score {' + list.map(function (q, i) { return i + 1; }).join(' ') + '}');
+    }
+    list.forEach(function (q, i) {
+      lines.push('V:' + (i + 1));
+      lines.push(quantizedBody(q, options, L, target));
+    });
+    return lines.join('\n');
   }
 
   /* 引擎 2 的入口（与 stepToABC 同签名） */
@@ -916,48 +1055,7 @@
     return out;
   }
 
-  /* 一个中间状态 → 单轨 MIDI：每个起点一个音，音长用时值。
-     全音符 = 4 个四分音符 = 4×PPQ tick，与速度无关。 */
-  function buildRhythmMidi(step, options) {
-    options = options || {};
-    const bpm = Math.max(20, Math.min(400, Number(options.bpm) || 120));
-    const meter = parseMeter(options.meter);
-    const percussion = options.percussion !== false;
-    const channel = percussion ? 9 : (options.channel == null ? 0 : options.channel);
-    const note = options.pitch == null ? (percussion ? 76 : 60) : options.pitch;
-    const gate = options.gate == null ? 0.9 : options.gate;
-    const velocities = options.velocities || null;
-
-    const tickOf = function (t) { return Math.max(0, Math.round(t * 4 * MIDI_PPQ)); };
-    const events = [];
-    let seq = 0;
-    function push(tick, order, data) { events.push({ tick: tick, order: order, seq: seq++, data: data }); }
-
-    const usPerBeat = Math.round(60000000 / bpm);
-    push(0, 0, [0xFF, 0x51, 0x03, (usPerBeat >> 16) & 0xFF, (usPerBeat >> 8) & 0xFF, usPerBeat & 0xFF]);
-    push(0, 0, [0xFF, 0x58, 0x04, meter.num, Math.round(Math.log2(meter.den)), 24, 8]);
-    const name = asciiBytes(options.trackName || 'Rhythm');
-    push(0, 0, [0xFF, 0x03].concat(vlq(name.length), name));
-
-    const onsets = step.onsets || durationsToOnsets(step.durations || []);
-    const durations = step.durations || [];
-    const total = step.total != null ? step.total : totalDuration(durations);
-    const info = asciiBytes('rhythm meter=' + meter.num + '/' + meter.den
-      + ' onsets=' + onsets.length);
-    push(0, 0, [0xFF, 0x01].concat(vlq(info.length), info));
-    if (!percussion) { push(0, 1, [0xC0 | channel, 0]); }
-
-    onsets.forEach(function (onset, i) {
-      const dur = (i < onsets.length - 1 ? onsets[i + 1] : total) - onset;
-      const startTick = tickOf(onset);
-      const durTicks = Math.max(1, Math.round(dur * 4 * MIDI_PPQ * gate));
-      const vel = velocities ? Math.max(1, Math.min(127, velocities[i] | 0)) : 100;
-      push(startTick, 3, [0x90 | channel, note & 0x7F, vel]);
-      push(startTick + durTicks, 2, [0x80 | channel, note & 0x7F, 0]);
-    });
-
-    push(tickOf(total) + 1, 0, [0xFF, 0x2F, 0x00]);
-
+  function trackChunk(events) {
     events.sort(function (a, b) {
       return a.tick - b.tick || a.order - b.order || a.seq - b.seq;
     });
@@ -968,16 +1066,112 @@
       track.push.apply(track, e.data);
       last = e.tick;
     });
-    const header = [0x4D, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1,
-                    (MIDI_PPQ >> 8) & 0xFF, MIDI_PPQ & 0xFF];
     const len = track.length;
-    const trackHeader = [0x4D, 0x54, 0x72, 0x6B,
-                         (len >>> 24) & 0xFF, (len >>> 16) & 0xFF, (len >>> 8) & 0xFF, len & 0xFF];
-    return { bytes: Uint8Array.from(header.concat(trackHeader, track)), eventCount: onsets.length };
+    return [0x4D, 0x54, 0x72, 0x6B,
+            (len >>> 24) & 0xFF, (len >>> 16) & 0xFF, (len >>> 8) & 0xFF, len & 0xFF].concat(track);
+  }
+
+  function smfHeader(format, trackCount) {
+    return [0x4D, 0x54, 0x68, 0x64, 0, 0, 0, 6,
+            (format >> 8) & 0xFF, format & 0xFF,
+            (trackCount >> 8) & 0xFF, trackCount & 0xFF,
+            (MIDI_PPQ >> 8) & 0xFF, MIDI_PPQ & 0xFF];
+  }
+
+  function tempoMeta(bpm, meter) {
+    const usPerBeat = Math.round(60000000 / bpm);
+    return [
+      { tick: 0, order: 0, seq: 0, data: [0xFF, 0x51, 0x03,
+        (usPerBeat >> 16) & 0xFF, (usPerBeat >> 8) & 0xFF, usPerBeat & 0xFF] },
+      { tick: 0, order: 0, seq: 1, data: [0xFF, 0x58, 0x04, meter.num,
+        Math.round(Math.log2(meter.den)), 24, 8] }
+    ];
+  }
+
+  /* 一个声部 → 事件列表。voiceIndex 决定通道（打击乐都走 9）。 */
+  function voiceEvents(step, options, voiceIndex) {
+    const percussion = options.percussion !== false;
+    const channel = percussion ? 9 : ((options.channel == null ? 0 : options.channel) + voiceIndex) % 16;
+    const note = options.pitch == null
+      ? (percussion ? 76 : 60 + voiceIndex * 2)
+      : options.pitch + (percussion ? 0 : voiceIndex);
+    const gate = options.gate == null ? 0.9 : options.gate;
+    const tickOf = function (t) { return Math.max(0, Math.round(t * 4 * MIDI_PPQ)); };
+    const onsets = step.onsets || durationsToOnsets(step.durations || []);
+    const durations = step.durations || [];
+    const total = step.total != null ? step.total : totalDuration(durations);
+    const events = [];
+    let seq = 0;
+    onsets.forEach(function (onset, i) {
+      if (step.rests && step.rests[i]) { return; }   /* 休止不发 MIDI 音 */
+      const dur = (i < onsets.length - 1 ? onsets[i + 1] : total) - onset;
+      const startTick = tickOf(onset);
+      const durTicks = Math.max(1, Math.round(dur * 4 * MIDI_PPQ * gate));
+      events.push({ tick: startTick, order: 3, seq: seq++, data: [0x90 | channel, note & 0x7F, 100] });
+      events.push({ tick: startTick + durTicks, order: 2, seq: seq++,
+                    data: [0x80 | channel, note & 0x7F, 0] });
+    });
+    const lastTick = tickOf(total) + 1;
+    events.push({ tick: lastTick, order: 9, seq: seq++, data: [0xFF, 0x2F, 0x00] });
+    return { events: events, endTick: lastTick, sounded: onsets.length - (step.rests ? step.rests.filter(Boolean).length : 0) };
+  }
+
+  /* 一个中间状态 → 单轨 MIDI（format 0）。
+     全音符 = 4 个四分音符 = 4×PPQ tick，与速度无关。 */
+  function buildRhythmMidi(step, options) {
+    options = options || {};
+    const bpm = Math.max(20, Math.min(400, Number(options.bpm) || 120));
+    const meter = parseMeter(options.meter);
+    const voice = voiceEvents(step, options, 0);
+    const meta = tempoMeta(bpm, meter).map(function (e) { return e; });
+    const name = asciiBytes(options.trackName || 'Rhythm');
+    meta.push({ tick: 0, order: 0, seq: 2, data: [0xFF, 0x03].concat(vlq(name.length), name) });
+    const info = asciiBytes('rhythm meter=' + meter.num + '/' + meter.den
+      + ' onsets=' + voice.sounded);
+    meta.push({ tick: 0, order: 0, seq: 3, data: [0xFF, 0x01].concat(vlq(info.length), info) });
+    if (options.percussion === false) {
+      meta.push({ tick: 0, order: 1, seq: 4, data: [0xC0 | ((options.channel || 0) % 16), 0] });
+    }
+    const chunk = trackChunk(meta.concat(voice.events));
+    return {
+      bytes: Uint8Array.from(smfHeader(0, 1).concat(chunk)),
+      eventCount: voice.sounded
+    };
+  }
+
+  /* 多个声部 → format 1 多轨 MIDI：第 1 轨放速度/拍号，其余每声部一轨。 */
+  function buildRhythmMidiMulti(steps, options) {
+    options = options || {};
+    const bpm = Math.max(20, Math.min(400, Number(options.bpm) || 120));
+    const meter = parseMeter(options.meter);
+    const list = (steps || []).filter(Boolean);
+    const chunks = [];
+    let totalSounded = 0;
+    const metaEvents = tempoMeta(bpm, meter);
+    const title = asciiBytes(options.trackName || 'Rhythm');
+    metaEvents.push({ tick: 0, order: 0, seq: 2, data: [0xFF, 0x03].concat(vlq(title.length), title) });
+    for (let i = list.length; i < 1; i++) { /* 至少留一轨 */ }
+    chunks.push(trackChunk(metaEvents.concat([{ tick: 0, order: 9, seq: 3, data: [0xFF, 0x2F, 0x00] }])));
+    list.forEach(function (step, i) {
+      const voice = voiceEvents(step, options, i);
+      totalSounded += voice.sounded;
+      const name = asciiBytes('Voice ' + (i + 1));
+      const head = [{ tick: 0, order: 0, seq: 0, data: [0xFF, 0x03].concat(vlq(name.length), name) }];
+      if (options.percussion === false) {
+        head.push({ tick: 0, order: 1, seq: 1,
+                    data: [0xC0 | (((options.channel || 0) + i) % 16), 0] });
+      }
+      chunks.push(trackChunk(head.concat(voice.events)));
+    });
+    const bytes = smfHeader(1, chunks.length);
+    chunks.forEach(function (c) { bytes.push.apply(bytes, c); });
+    return { bytes: Uint8Array.from(bytes), eventCount: totalSounded, tracks: list.length };
   }
 
   return {
     parseRhythm: parseRhythm,
+    parseRhythmDetailed: parseRhythmDetailed,
+    mergeRests: mergeRests,
     formatNumber: formatNumber,
     totalDuration: totalDuration,
     durationsToOnsets: durationsToOnsets,
@@ -993,6 +1187,8 @@
     stepToABCGlobal: stepToABCGlobal,
     quantizeNotation: quantizeNotation,
     abcFromQuantized: abcFromQuantized,
+    abcFromQuantizedMulti: abcFromQuantizedMulti,
+    quantizedBody: quantizedBody,
     groupActual: groupActual,
     makeNotationLayers: makeNotationLayers,
     decomposeWritten: decomposeWritten,
@@ -1005,11 +1201,14 @@
     DEFAULT_MIN_BRACKET_NOTES: DEFAULT_MIN_BRACKET_NOTES,
     DEFAULT_TUPLETS: DEFAULT_TUPLETS,
     parseTuplets: parseTuplets,
+    parseTupletToken: parseTupletToken,
+    nestedTupletReadings: nestedTupletReadings,
     ABC_MAX_TUPLET: ABC_MAX_TUPLET,
     splitTuplet: splitTuplet,
     canRenderTuplet: canRenderTuplet,
     stepColor: stepColor,
     buildRhythmMidi: buildRhythmMidi,
+    buildRhythmMidiMulti: buildRhythmMidiMulti,
     MIDI_PPQ: MIDI_PPQ,
     vlq: vlq
   };
