@@ -28,7 +28,7 @@
 | 插值计算器 | `tools/interpolation-demo.html` + `tools/interpolation-core.js` | 网页：与 OM 同构的插值、88 键输入、五线谱、曲线预览、MIDI 导出（含微分音） |
 | 虚拟基音计算器 | `tools/virtualfund-demo.html` + `tools/virtualfund-core.js` | 网页：移植 OM 的 `tolerant-gcd` / `virtual-fund`，虚基音、泛音序号对照表、精度扫描、MIDI/SVG 导出 |
 | 节奏插值 | `tools/rhythm-interp-demo.html` + `tools/rhythm-interp-core.js` | 网页：多声部、休止符、拍号、音值组合法、五线谱（abcjs）、MIDI/SVG 导出 |
-| 算法作曲工具集 0.2（原生外壳） | `tools/mac-shell-poc/` | AppKit + WKWebView：侧边栏、独立置顶悬浮面板、真 Liquid Glass、**四工具**切换（⌘1–⌘4） |
+| 算法作曲工具集 0.2（原生外壳） | `tools/app-shell/` | AppKit + WKWebView：侧边栏、独立置顶悬浮面板、真 Liquid Glass、**四工具**切换（⌘1–⌘4） |
 | 两个单工具 .app | `tools/app-source/`、`tools/app-source-interpolation/` | ObjC + WKWebView 的 app 外壳源码与打包脚本 |
 
 ## 路线图：通往 1.0
@@ -93,8 +93,8 @@ node tools/test-virtualfund-core.mjs        # 24 项
 ### 算法作曲工具集（原生外壳）
 
 ```sh
-cd tools/mac-shell-poc
-./build-poc.sh
+cd tools/app-shell
+./build-app.sh
 open "build/算法作曲工具集.app"
 ```
 
@@ -134,9 +134,9 @@ tools/
 ├── README-节奏插值.md
 ├── app-source/                       环形调制 .app 外壳（ObjC）
 ├── app-source-interpolation/         插值 .app 外壳（ObjC）
-└── mac-shell-poc/                    算法作曲工具集 0.2 原生外壳
+└── app-shell/                    算法作曲工具集 0.2 原生外壳
     ├── main.m                        AppKit 外壳 + 悬浮面板 + 桥
-    ├── build-poc.sh                  编译打包脚本
+    ├── build-app.sh                  编译打包脚本
     ├── make-icon.swift               图标绘制
     ├── Info.plist / AppIcon.icns
     └── README.md
@@ -157,13 +157,13 @@ tools/
 
 ## 开发提示
 
-- 建 `/tmp/poc-use-external` 可让原生外壳切到 `~/Documents/.../tools/` 读取网页源码
+- 建 `/tmp/debug-use-external` 可让原生外壳切到 `~/Documents/.../tools/` 读取网页源码
   （首次会弹一次文稿授权，允许即可）
 - 重新编译并覆盖安装：
 
   ```sh
-  cd tools/mac-shell-poc
-  ./build-poc.sh
+  cd tools/app-shell
+  ./build-app.sh
   ditto "build/算法作曲工具集.app" "/Applications/算法作曲工具集.app"
   ```
 

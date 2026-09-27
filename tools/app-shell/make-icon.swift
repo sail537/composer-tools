@@ -94,7 +94,7 @@ for t in [CGFloat(0), 0.25, 0.5, 0.75, 1.0] {
 }
 
 guard let image = ctx.makeImage() else { fatalError("cannot make image") }
-let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "/tmp/poc-icon/icon1024.png"
+let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "/tmp/app-icon/icon1024.png"
 try? FileManager.default.createDirectory(atPath: (out as NSString).deletingLastPathComponent,
                                          withIntermediateDirectories: true)
 guard let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: out) as CFURL,

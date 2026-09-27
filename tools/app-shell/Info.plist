@@ -11,7 +11,7 @@
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
-  <string>local.tools.composer-tools-poc</string>
+  <string>local.tools.algorithmic-composer</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundlePackageType</key>

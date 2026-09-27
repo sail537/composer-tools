@@ -3,8 +3,8 @@
 
 # 构建产物（app、可执行文件、符号）
 tools/build/
-tools/mac-shell-poc/build/
-tools/mac-shell-poc/*.zip
+tools/app-shell/build/
+tools/app-shell/*.zip
 **/*.app/
 **/*.dSYM/
 

@@ -141,6 +141,19 @@
     .key.black:hover { background: #2c2c2e; }
     input[type=range] { accent-color: var(--accent); }
   }
+
+  /* ---------- 选中态（必须放在最后） ---------- */
+  /* 深色模式里 .key.white / .key.black 又声明了一遍，权重相同、位置在后，
+     会把前面的选中色整个盖掉——所以这里用 .keyboard .key 提高一级权重，
+     明暗两种外观下选中的音都看得见。 */
+  .keyboard .key.sel-a { background: var(--a); border-color: var(--a); color: #fff; }
+  .keyboard .key.sel-b { background: var(--b); border-color: var(--b); color: #fff; }
+  .keyboard .key.sel-both {
+    background: linear-gradient(180deg, var(--a) 0%, var(--b) 100%); color: #fff;
+  }
+  .keyboard .key.sel-a:hover,
+  .keyboard .key.sel-b:hover,
+  .keyboard .key.sel-both:hover { filter: brightness(1.1); }
 </style>
 </head>
 <body>

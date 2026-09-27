@@ -9,7 +9,7 @@ OUT="$DIR/build"
 APP="$OUT/算法作曲工具集.app"
 
 mkdir -p "$OUT"
-rm -f "$OUT/AlgorithmicComposer" "$OUT/ComposerToolsPoc"
+rm -f "$OUT/AlgorithmicComposer"
 
 clang -fobjc-arc -O2 -framework Cocoa -framework WebKit -framework QuartzCore \
   -o "$OUT/AlgorithmicComposer" "$DIR/main.m"

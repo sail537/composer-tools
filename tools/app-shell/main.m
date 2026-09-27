@@ -10,17 +10,17 @@ static NSString * const kAppVersion = @"0.2";
 static NSString * const kAppBuild = @"2";
 static NSString * const kTransportFrameName = @"FloatingTransportPanel";
 
-static void PoCLog(NSString *format, ...) {
+static void AppLog(NSString *format, ...) {
     va_list args;
     va_start(args, format);
     NSString *line = [[NSString alloc] initWithFormat:format arguments:args];
     va_end(args);
     NSString *entry = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], line];
-    FILE *file = fopen("/tmp/composer-poc.log", "a");
+    FILE *file = fopen("/tmp/algorithmic-composer.log", "a");
     if (file) { fputs(entry.UTF8String, file); fclose(file); }
 }
 
-static BOOL POCFlag(NSString *name) {
+static BOOL DebugFlag(NSString *name) {
     return [[NSFileManager defaultManager] fileExistsAtPath:[@"/tmp/" stringByAppendingString:name]];
 }
 
@@ -59,7 +59,7 @@ static BOOL POCFlag(NSString *name) {
     if (changed) {
         self.lastInsets = insets;
         self.hasLoggedInsets = YES;
-        PoCLog(@"root safeArea top=%.1f left=%.1f bottom=%.1f right=%.1f",
+        AppLog(@"root safeArea top=%.1f left=%.1f bottom=%.1f right=%.1f",
                insets.top, insets.left, insets.bottom, insets.right);
     }
 }
@@ -199,30 +199,30 @@ static BOOL POCFlag(NSString *name) {
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
-    PoCLog(@"applicationDidFinishLaunching");
+    AppLog(@"applicationDidFinishLaunching");
     self.panelPinned = YES;
     self.panelVisible = YES;
-    /* 固定使用真玻璃；只有调试时建 /tmp/poc-use-frosted 才切磨砂 */
-    self.useGlassMaterial = !POCFlag(@"poc-use-frosted");
+    /* 固定使用真玻璃；只有调试时建 /tmp/debug-use-frosted 才切磨砂 */
+    self.useGlassMaterial = !DebugFlag(@"debug-use-frosted");
 
     [self buildMenu];
-    PoCLog(@"menu built");
+    AppLog(@"menu built");
     [self buildWindow];
-    PoCLog(@"window built");
-    if (!POCFlag(@"poc-no-panel")) {
+    AppLog(@"window built");
+    if (!DebugFlag(@"debug-no-panel")) {
         [self rebuildTransportPanel];
-        PoCLog(@"transport panel built");
+        AppLog(@"transport panel built");
     } else {
-        PoCLog(@"transport panel disabled");
+        AppLog(@"transport panel disabled");
     }
 
     __block NSInteger beats = 0;
     [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *timer) {
         beats++;
-        if (beats <= 10) { PoCLog(@"heartbeat %ld", (long)beats); }
+        if (beats <= 10) { AppLog(@"heartbeat %ld", (long)beats); }
         if (beats == 10) { [timer invalidate]; }
     }];
-    PoCLog(@"heartbeat timer scheduled");
+    AppLog(@"heartbeat timer scheduled");
     self.launchComplete = YES;
     [NSApp activateIgnoringOtherApps:YES];
 }
@@ -254,18 +254,18 @@ static BOOL POCFlag(NSString *name) {
     [self.splitViewController addSplitViewItem:[self makeContentItem]];
     self.window.contentViewController = self.splitViewController;
 
-    NSToolbar *toolbar = [[NSToolbar alloc] initWithIdentifier:@"composer-tools-poc"];
+    NSToolbar *toolbar = [[NSToolbar alloc] initWithIdentifier:@"algorithmic-composer"];
     toolbar.delegate = self;
     toolbar.displayMode = NSToolbarDisplayModeIconOnly;
     toolbar.allowsUserCustomization = YES;
     self.window.toolbar = toolbar;
 
-    if (POCFlag(@"poc-dark")) {
+    if (DebugFlag(@"debug-dark")) {
         NSAppearance *dark = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
         self.window.appearance = dark;
         if (self.webView) { self.webView.appearance = dark; }
         if (self.interpWebView) { self.interpWebView.appearance = dark; }
-        PoCLog(@"forced dark appearance");
+        AppLog(@"forced dark appearance");
     }
 
     [self.window makeKeyAndOrderFront:nil];
@@ -284,16 +284,16 @@ static BOOL POCFlag(NSString *name) {
     table.delegate = self;
     table.allowsEmptySelection = NO;
     self.sidebarTable = table;
-    /* 启动时默认打开第一个工具；在 /tmp 建 poc-start-tool-N（N = 0…3）可指定 */
+    /* 启动时默认打开第一个工具；在 /tmp 建 debug-start-tool-N（N = 0…3）可指定 */
     NSInteger startTool = 0;
     for (NSInteger candidate = 0; candidate <= 3; candidate++) {
-        if (POCFlag([NSString stringWithFormat:@"poc-start-tool-%ld", (long)candidate])) {
+        if (DebugFlag([NSString stringWithFormat:@"debug-start-tool-%ld", (long)candidate])) {
             startTool = candidate;
             break;
         }
     }
     [table selectRowIndexes:[NSIndexSet indexSetWithIndex:startTool] byExtendingSelection:NO];
-    PoCLog(@"sidebar built startTool=%ld rows=%ld selected=%ld dataSource=%d delegate=%d",
+    AppLog(@"sidebar built startTool=%ld rows=%ld selected=%ld dataSource=%d delegate=%d",
            (long)startTool, (long)table.numberOfRows, (long)table.selectedRow,
            table.dataSource != nil, table.delegate != nil);
 
@@ -354,26 +354,26 @@ static BOOL POCFlag(NSString *name) {
     root.wantsLayer = YES;
     NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray array];
 
-    if (!POCFlag(@"poc-no-web")) {
+    if (!DebugFlag(@"debug-no-web")) {
         self.webView = [self makeWebViewWithFrame:root.bounds];
         self.webView.translatesAutoresizingMaskIntoConstraints = NO;
         [root addSubview:self.webView];
 
-        if (!POCFlag(@"poc-no-interp")) {
+        if (!DebugFlag(@"debug-no-interp")) {
             self.interpWebView = [self makeWebViewWithFrame:root.bounds];
             self.interpWebView.translatesAutoresizingMaskIntoConstraints = NO;
             self.interpWebView.hidden = YES;
             [root addSubview:self.interpWebView];
         }
 
-        if (!POCFlag(@"poc-no-vf")) {
+        if (!DebugFlag(@"debug-no-vf")) {
             self.vfWebView = [self makeWebViewWithFrame:root.bounds];
             self.vfWebView.translatesAutoresizingMaskIntoConstraints = NO;
             self.vfWebView.hidden = YES;
             [root addSubview:self.vfWebView];
         }
 
-        if (!POCFlag(@"poc-no-rhythm")) {
+        if (!DebugFlag(@"debug-no-rhythm")) {
             self.rhythmWebView = [self makeWebViewWithFrame:root.bounds];
             self.rhythmWebView.translatesAutoresizingMaskIntoConstraints = NO;
             self.rhythmWebView.hidden = YES;
@@ -392,14 +392,14 @@ static BOOL POCFlag(NSString *name) {
                 [web.bottomAnchor constraintEqualToAnchor:root.safeAreaLayoutGuide.bottomAnchor constant:-10.0]
             ]];
         }
-        PoCLog(@"content: web views created");
+        AppLog(@"content: web views created");
         /* 侧边栏早期选中的工具要在这里补一次可见性（见 applyToolVisibility 注释） */
         [self applyToolVisibility];
     } else {
-        PoCLog(@"content: web view disabled");
+        AppLog(@"content: web view disabled");
     }
 
-    if (!POCFlag(@"poc-no-placeholder")) {
+    if (!DebugFlag(@"debug-no-placeholder")) {
         self.placeholderView = [self makePlaceholder];
         self.placeholderView.hidden = YES;
         [root addSubview:self.placeholderView];
@@ -588,7 +588,7 @@ static BOOL POCFlag(NSString *name) {
     self.panelRow = row;
     self.panelContent = content;
     self.buildingTransportPanel = NO;
-    PoCLog(@"transport content tool=%ld glass=%d curveView=%d",
+    AppLog(@"transport content tool=%ld glass=%d curveView=%d",
            (long)self.activeTool, self.useGlassMaterial, self.curveView != nil);
     return content;
 }
@@ -625,9 +625,9 @@ static BOOL POCFlag(NSString *name) {
 - (NSPanel *)makeTransportPanel {
     NSView *content;
     NSView *material;
-    if (POCFlag(@"poc-panel-simple")) {
+    if (DebugFlag(@"debug-panel-simple")) {
         NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 260, 56)];
-        NSTextField *label = [NSTextField labelWithString:@"独立面板 PoC"];
+        NSTextField *label = [NSTextField labelWithString:@"独立面板"];
         label.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
         [label sizeToFit];
         label.frame = NSMakeRect((260 - label.frame.size.width) / 2.0,
@@ -639,7 +639,7 @@ static BOOL POCFlag(NSString *name) {
         material = container;
     } else {
         content = [self makeTransportContent];
-        material = POCFlag(@"poc-panel-plain") ? content : [self wrapTransportContent:content];
+        material = DebugFlag(@"debug-panel-plain") ? content : [self wrapTransportContent:content];
     }
     self.panelMaterial = material;
     NSRect frame = NSMakeRect(0, 0, material.frame.size.width, material.frame.size.height);
@@ -659,7 +659,7 @@ static BOOL POCFlag(NSString *name) {
     panel.hasShadow = YES;
     panel.movableByWindowBackground = YES;
     panel.contentView = material;
-    if (!POCFlag(@"poc-panel-no-autosave")) {
+    if (!DebugFlag(@"debug-panel-no-autosave")) {
         [panel setFrameAutosaveName:kTransportFrameName];
         if (![[NSUserDefaults standardUserDefaults] stringForKey:
               [@"NSWindow Frame " stringByAppendingString:kTransportFrameName]]) {
@@ -672,7 +672,7 @@ static BOOL POCFlag(NSString *name) {
     NSRect panelFrame = panel.frame;
     panelFrame.size = frame.size;
     [panel setFrame:panelFrame display:NO];
-    PoCLog(@"panel content=%@ frame=%@", NSStringFromSize(frame.size), NSStringFromRect(panel.frame));
+    AppLog(@"panel content=%@ frame=%@", NSStringFromSize(frame.size), NSStringFromRect(panel.frame));
     [self applyPanelLevel];
     return panel;
 }
@@ -693,8 +693,8 @@ static BOOL POCFlag(NSString *name) {
         newFrame.origin = previousFrame.origin;
         [self.transportPanel setFrame:newFrame display:NO];
     }
-    PoCLog(@"panel rebuilt size=%@", NSStringFromRect(self.transportPanel.frame));
-    if (wasVisible && self.panelVisible && !POCFlag(@"poc-panel-no-order")) {
+    AppLog(@"panel rebuilt size=%@", NSStringFromRect(self.transportPanel.frame));
+    if (wasVisible && self.panelVisible && !DebugFlag(@"debug-panel-no-order")) {
         [self.transportPanel orderFrontRegardless];
     }
     [self updatePanelButtons];
@@ -712,7 +712,7 @@ static BOOL POCFlag(NSString *name) {
         self.transportPanel.level = NSNormalWindowLevel;
         self.transportPanel.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary;
     }
-    PoCLog(@"panel level=%ld pinned=%d", (long)self.transportPanel.level, self.panelPinned);
+    AppLog(@"panel level=%ld pinned=%d", (long)self.transportPanel.level, self.panelPinned);
 }
 
 - (void)updatePanelButtons {
@@ -736,7 +736,7 @@ static BOOL POCFlag(NSString *name) {
         [self.transportPanel orderOut:nil];
     }
     [self updatePanelButtons];
-    PoCLog(@"panel visible=%d", visible);
+    AppLog(@"panel visible=%d", visible);
 }
 
 - (void)togglePanel:(id)sender { [self applyPanelVisibility:!self.panelVisible]; }
@@ -764,29 +764,29 @@ static BOOL POCFlag(NSString *name) {
     } else {
         [self useGlassMaterial:sender];
     }
-    PoCLog(@"material glass=%d", self.useGlassMaterial);
+    AppLog(@"material glass=%d", self.useGlassMaterial);
 }
 
 - (void)minimizeMainWindow:(id)sender {
     [self.window performMiniaturize:sender];
-    PoCLog(@"main window minimized");
+    AppLog(@"main window minimized");
 }
 
 - (void)restoreMainWindow:(id)sender {
     [self.window deminiaturize:sender];
     [self.window makeKeyAndOrderFront:sender];
-    PoCLog(@"main window restored");
+    AppLog(@"main window restored");
 }
 
 #pragma mark 页面加载与桥
 
 - (NSURL *)urlForRelativePath:(NSString *)relativePath bundleName:(NSString *)bundleName {
     /* 默认只读 app bundle 内的资源：不访问 ~/Documents，就不会触发 TCC 授权弹窗。
-       需要改网页源码时，在 /tmp 建一个 poc-use-external 文件即可切回外置路径。 */
-    if (POCFlag(@"poc-use-external")) {
+       需要改网页源码时，在 /tmp 建一个 debug-use-external 文件即可切回外置路径。 */
+    if (DebugFlag(@"debug-use-external")) {
         NSString *external = [NSHomeDirectory() stringByAppendingPathComponent:relativePath];
         if ([[NSFileManager defaultManager] fileExistsAtPath:external]) {
-            PoCLog(@"using external resource %@", external);
+            AppLog(@"using external resource %@", external);
             return [NSURL fileURLWithPath:external];
         }
     }
@@ -804,7 +804,7 @@ static BOOL POCFlag(NSString *name) {
         NSURL *url = [self urlForRelativePath:@"Documents/ChatGPT/论文paper/tools/ringmod-demo.html"
                                    bundleName:@"ringmod-demo"];
         if (url) {
-            PoCLog(@"loadPage ringmod %@", url.path);
+            AppLog(@"loadPage ringmod %@", url.path);
             [self.webView loadFileURL:url allowingReadAccessToURL:[url URLByDeletingLastPathComponent]];
         }
     }
@@ -812,7 +812,7 @@ static BOOL POCFlag(NSString *name) {
         NSURL *url = [self urlForRelativePath:@"Documents/ChatGPT/论文paper/tools/interpolation-demo.html"
                                    bundleName:@"interpolation-demo"];
         if (url) {
-            PoCLog(@"loadPage interp %@", url.path);
+            AppLog(@"loadPage interp %@", url.path);
             [self.interpWebView loadFileURL:url allowingReadAccessToURL:[url URLByDeletingLastPathComponent]];
         }
     }
@@ -820,7 +820,7 @@ static BOOL POCFlag(NSString *name) {
         NSURL *url = [self urlForRelativePath:@"Documents/ChatGPT/论文paper/tools/virtualfund-demo.html"
                                    bundleName:@"virtualfund-demo"];
         if (url) {
-            PoCLog(@"loadPage vf %@", url.path);
+            AppLog(@"loadPage vf %@", url.path);
             [self.vfWebView loadFileURL:url allowingReadAccessToURL:[url URLByDeletingLastPathComponent]];
         }
     }
@@ -828,45 +828,45 @@ static BOOL POCFlag(NSString *name) {
         NSURL *url = [self urlForRelativePath:@"Documents/ChatGPT/论文paper/tools/rhythm-interp-demo.html"
                                    bundleName:@"rhythm-interp-demo"];
         if (url) {
-            PoCLog(@"loadPage rhythm %@", url.path);
+            AppLog(@"loadPage rhythm %@", url.path);
             [self.rhythmWebView loadFileURL:url allowingReadAccessToURL:[url URLByDeletingLastPathComponent]];
         }
     }
     if (!self.webView && !self.interpWebView && !self.vfWebView && !self.rhythmWebView) {
-        PoCLog(@"loadPage skipped (no web view)");
+        AppLog(@"loadPage skipped (no web view)");
     }
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     if (webView == self.rhythmWebView) {
-        PoCLog(@"didFinishNavigation rhythm");
+        AppLog(@"didFinishNavigation rhythm");
         [self injectRhythmStyle];
     } else if (webView == self.vfWebView) {
-        PoCLog(@"didFinishNavigation vf");
+        AppLog(@"didFinishNavigation vf");
         [self injectVfStyle];
     } else if (webView == self.interpWebView) {
-        PoCLog(@"didFinishNavigation interp");
+        AppLog(@"didFinishNavigation interp");
         [self injectInterpStyle];
     } else {
-        PoCLog(@"didFinishNavigation ringmod");
+        AppLog(@"didFinishNavigation ringmod");
         [self injectRingmodBridge];
     }
 }
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
-    PoCLog(@"didStartProvisionalNavigation");
+    AppLog(@"didStartProvisionalNavigation");
 }
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
-    PoCLog(@"didCommitNavigation");
+    AppLog(@"didCommitNavigation");
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    PoCLog(@"didFailProvisionalNavigation %@", error);
+    AppLog(@"didFailProvisionalNavigation %@", error);
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    PoCLog(@"didFailNavigation %@", error);
+    AppLog(@"didFailNavigation %@", error);
 }
 
 - (void)webView:(WKWebView *)webView
@@ -920,11 +920,11 @@ static BOOL POCFlag(NSString *name) {
         destination = [directory URLByAppendingPathComponent:
                        [NSString stringWithFormat:@"%@-%d.%@", base, index++, extension]];
     }
-    PoCLog(@"download -> %@", destination.path);
+    AppLog(@"download -> %@", destination.path);
     completionHandler(destination);
 }
 
-- (void)downloadDidFinish:(WKDownload *)download { PoCLog(@"download finished"); }
+- (void)downloadDidFinish:(WKDownload *)download { AppLog(@"download finished"); }
 
 - (NSString *)jsString:(NSString *)string {
     NSData *data = [NSJSONSerialization dataWithJSONObject:@[string] options:0 error:nil];
@@ -949,8 +949,8 @@ static BOOL POCFlag(NSString *name) {
 - (void)injectRingmodBridge {
     NSString *js = [NSString stringWithFormat:
         @"(function () {"
-         "  if (window.__composerPoc) { return; }"
-         "  window.__composerPoc = true;"
+         "  if (window.__composerShell) { return; }"
+         "  window.__composerShell = true;"
          "  const style = document.createElement('style');"
          "  style.textContent = %@;"
          "  document.head.appendChild(style);"
@@ -993,9 +993,9 @@ static BOOL POCFlag(NSString *name) {
          "  }, 1000);"
          "})();", [self jsString:[self shellCSS]]];
     [self.webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        PoCLog(@"injectRingmodBridge done error=%@", error);
+        AppLog(@"injectRingmodBridge done error=%@", error);
     }];
-    if (POCFlag(@"poc-debug-styles")) {
+    if (DebugFlag(@"debug-debug-styles")) {
         NSString *debug = @"(function(){var ids=['c-group','c-note','m-group','m-note','export-svg','export-png','edo'];var o={};ids.forEach(function(id){var el=document.getElementById(id);if(el){var cs=getComputedStyle(el);o[id]=cs.backgroundColor+' | '+cs.color;}});try{window.webkit.messageHandlers.bridge.postMessage({tool:'ringmod',styles:o});}catch(e){}})();";
         [self.webView evaluateJavaScript:debug completionHandler:nil];
     }
@@ -1005,8 +1005,8 @@ static BOOL POCFlag(NSString *name) {
     if (!self.interpWebView) { return; }
     NSString *js = [NSString stringWithFormat:
         @"(function () {"
-         "  if (window.__composerPocStyle) { return; }"
-         "  window.__composerPocStyle = true;"
+         "  if (window.__composerShellStyle) { return; }"
+         "  window.__composerShellStyle = true;"
          "  window.addEventListener('error', function (e) {"
          "    try { window.webkit.messageHandlers.bridge.postMessage({ tool: 'interp', jsError: String(e.message || e) }); } catch (err) {}"
          "  });"
@@ -1015,9 +1015,9 @@ static BOOL POCFlag(NSString *name) {
          "  document.head.appendChild(style);"
          "})();", [self jsString:[self shellCSS]]];
     [self.interpWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        PoCLog(@"injectInterpStyle done error=%@", error);
+        AppLog(@"injectInterpStyle done error=%@", error);
     }];
-    if (POCFlag(@"poc-debug-styles")) {
+    if (DebugFlag(@"debug-debug-styles")) {
         NSString *debug = @"(function(){var ids=['a-text','b-text','export-midi','export-svg','domain'];var o={};ids.forEach(function(id){var el=document.getElementById(id);if(el){var cs=getComputedStyle(el);o[id]=cs.backgroundColor+' | '+cs.color;}});try{window.webkit.messageHandlers.bridge.postMessage({tool:'interp',styles:o});}catch(e){}})();";
         [self.interpWebView evaluateJavaScript:debug completionHandler:nil];
     }
@@ -1027,8 +1027,8 @@ static BOOL POCFlag(NSString *name) {
     if (!self.vfWebView) { return; }
     NSString *js = [NSString stringWithFormat:
         @"(function () {"
-         "  if (window.__composerPocStyle) { return; }"
-         "  window.__composerPocStyle = true;"
+         "  if (window.__composerShellStyle) { return; }"
+         "  window.__composerShellStyle = true;"
          "  window.addEventListener('error', function (e) {"
          "    try { window.webkit.messageHandlers.bridge.postMessage({ tool: 'vf', jsError: String(e.message || e) }); } catch (err) {}"
          "  });"
@@ -1037,7 +1037,7 @@ static BOOL POCFlag(NSString *name) {
          "  document.head.appendChild(style);"
          "})();", [self jsString:[self shellCSS]]];
     [self.vfWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        PoCLog(@"injectVfStyle done error=%@", error);
+        AppLog(@"injectVfStyle done error=%@", error);
     }];
 }
 
@@ -1045,8 +1045,8 @@ static BOOL POCFlag(NSString *name) {
     if (!self.rhythmWebView) { return; }
     NSString *js = [NSString stringWithFormat:
         @"(function () {"
-         "  if (window.__composerPocStyle) { return; }"
-         "  window.__composerPocStyle = true;"
+         "  if (window.__composerShellStyle) { return; }"
+         "  window.__composerShellStyle = true;"
          "  window.addEventListener('error', function (e) {"
          "    try { window.webkit.messageHandlers.bridge.postMessage({ tool: 'rhythm', jsError: String(e.message || e) }); } catch (err) {}"
          "  });"
@@ -1055,7 +1055,7 @@ static BOOL POCFlag(NSString *name) {
          "  document.head.appendChild(style);"
          "})();", [self jsString:[self shellCSS]]];
     [self.rhythmWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        PoCLog(@"injectRhythmStyle done error=%@", error);
+        AppLog(@"injectRhythmStyle done error=%@", error);
     }];
 }
 
@@ -1065,7 +1065,7 @@ static BOOL POCFlag(NSString *name) {
     NSString *tool = [dict[@"tool"] isKindOfClass:[NSString class]] ? dict[@"tool"] : @"ringmod";
 
     if (dict[@"styles"]) {
-        PoCLog(@"computed styles[%@]: %@", tool, dict[@"styles"]);
+        AppLog(@"computed styles[%@]: %@", tool, dict[@"styles"]);
         return;
     }
 
@@ -1075,7 +1075,7 @@ static BOOL POCFlag(NSString *name) {
         double audioTime = [dict[@"audioTime"] doubleValue];
         self.lastAudioTime = audioTime;
         if (self.heartbeatCount % 3 == 0) {
-            PoCLog(@"js-heartbeat[%@] #%ld audio=%@ t=%.2f", tool, (long)self.heartbeatCount, audioState, audioTime);
+            AppLog(@"js-heartbeat[%@] #%ld audio=%@ t=%.2f", tool, (long)self.heartbeatCount, audioState, audioTime);
         }
         return;
     }
@@ -1083,12 +1083,12 @@ static BOOL POCFlag(NSString *name) {
     if ([tool isEqualToString:@"interp"]) {
         self.interpState = dict;
         if (dict[@"jsError"]) {
-            PoCLog(@"interp JS error: %@", dict[@"jsError"]);
+            AppLog(@"interp JS error: %@", dict[@"jsError"]);
             return;
         }
         static NSInteger interpCount = 0;
         if (interpCount++ < 8) {
-            PoCLog(@"bridge interp #%ld chords=%@ voices=%@ step=%@ playing=%@",
+            AppLog(@"bridge interp #%ld chords=%@ voices=%@ step=%@ playing=%@",
                    (long)interpCount, dict[@"chords"], dict[@"voices"], dict[@"step"], dict[@"playing"]);
         }
         [self updatePanelReadout];
@@ -1098,12 +1098,12 @@ static BOOL POCFlag(NSString *name) {
     if ([tool isEqualToString:@"vf"]) {
         self.vfState = dict;
         if (dict[@"jsError"]) {
-            PoCLog(@"vf JS error: %@", dict[@"jsError"]);
+            AppLog(@"vf JS error: %@", dict[@"jsError"]);
             return;
         }
         static NSInteger vfCount = 0;
         if (vfCount++ < 8) {
-            PoCLog(@"bridge vf #%ld chord=%@ fund=%@ partials=%@",
+            AppLog(@"bridge vf #%ld chord=%@ fund=%@ partials=%@",
                    (long)vfCount, dict[@"chordSize"], dict[@"fundName"], dict[@"partials"]);
         }
         [self updatePanelReadout];
@@ -1113,12 +1113,12 @@ static BOOL POCFlag(NSString *name) {
     if ([tool isEqualToString:@"rhythm"]) {
         self.rhythmState = dict;
         if (dict[@"jsError"]) {
-            PoCLog(@"rhythm JS error: %@", dict[@"jsError"]);
+            AppLog(@"rhythm JS error: %@", dict[@"jsError"]);
             return;
         }
         static NSInteger rhythmCount = 0;
         if (rhythmCount++ < 8) {
-            PoCLog(@"bridge rhythm #%ld steps=%@ strategy=%@ meter=%@",
+            AppLog(@"bridge rhythm #%ld steps=%@ strategy=%@ meter=%@",
                    (long)rhythmCount, dict[@"steps"], dict[@"strategy"], dict[@"meter"]);
         }
         [self updatePanelReadout];
@@ -1128,7 +1128,7 @@ static BOOL POCFlag(NSString *name) {
     self.ringState = dict;
     static NSInteger bridgeCount = 0;
     if (bridgeCount++ < 8) {
-        PoCLog(@"bridge ringmod #%ld carrier=%@ mod=%@ sum=%@ diff=%@",
+        AppLog(@"bridge ringmod #%ld carrier=%@ mod=%@ sum=%@ diff=%@",
                (long)bridgeCount, dict[@"carrierName"], dict[@"modulatorName"],
                dict[@"sumName"], dict[@"diffName"]);
     }
@@ -1158,7 +1158,7 @@ static BOOL POCFlag(NSString *name) {
     newFrame.origin.y = NSMaxY(oldFrame) - newFrame.size.height;   /* 上边缘不动 */
     if (NSEqualRects(oldFrame, newFrame)) { return; }
     [self.transportPanel setFrame:newFrame display:YES];
-    PoCLog(@"panel resized %.0fx%.0f -> %.0fx%.0f",
+    AppLog(@"panel resized %.0fx%.0f -> %.0fx%.0f",
            oldFrame.size.width, oldFrame.size.height, newFrame.size.width, newFrame.size.height);
 }
 
@@ -1181,7 +1181,7 @@ static BOOL POCFlag(NSString *name) {
         if (self.curveView) { self.curveView.curve = curve; }
         static double lastLoggedCurve = 9999.0;
         if (fabs(curve - lastLoggedCurve) > 1e-6) {
-            PoCLog(@"interp curve updated %.3f", curve);
+            AppLog(@"interp curve updated %.3f", curve);
             lastLoggedCurve = curve;
         }
         NSString *stepText = (playing && step > 0 && chords > 0)
@@ -1282,9 +1282,9 @@ static BOOL POCFlag(NSString *name) {
 #pragma mark 工具动作
 
 - (void)evalJS:(NSString *)js {
-    PoCLog(@"evalJS %@", js);
+    AppLog(@"evalJS %@", js);
     [self.webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        if (error) { NSLog(@"PoC JS error: %@", error); }
+        if (error) { NSLog(@"shell JS error: %@", error); }
     }];
 }
 
@@ -1307,16 +1307,16 @@ static BOOL POCFlag(NSString *name) {
 - (void)exportPng:(id)sender { [self evalJS:@"document.getElementById('export-png').click()"]; }
 
 - (void)evalInterpJS:(NSString *)js {
-    PoCLog(@"evalInterpJS %@", js);
+    AppLog(@"evalInterpJS %@", js);
     [self.interpWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        if (error) { NSLog(@"PoC interp JS error: %@", error); }
+        if (error) { NSLog(@"shell interp JS error: %@", error); }
     }];
 }
 
 - (void)evalVfJS:(NSString *)js {
-    PoCLog(@"evalVfJS %@", js);
+    AppLog(@"evalVfJS %@", js);
     [self.vfWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        if (error) { NSLog(@"PoC vf JS error: %@", error); }
+        if (error) { NSLog(@"shell vf JS error: %@", error); }
     }];
 }
 
@@ -1326,9 +1326,9 @@ static BOOL POCFlag(NSString *name) {
 - (void)exportVfSvg:(id)sender { [self evalVfJS:@"window.VirtualFundAPI && window.VirtualFundAPI.exportSvg()"]; }
 
 - (void)evalRhythmJS:(NSString *)js {
-    PoCLog(@"evalRhythmJS %@", js);
+    AppLog(@"evalRhythmJS %@", js);
     [self.rhythmWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        if (error) { NSLog(@"PoC rhythm JS error: %@", error); }
+        if (error) { NSLog(@"shell rhythm JS error: %@", error); }
     }];
 }
 
@@ -1485,7 +1485,7 @@ static BOOL POCFlag(NSString *name) {
         [self rebuildTransportPanel];
         [self updatePanelReadout];
     }
-    PoCLog(@"tool switched to %ld", (long)self.activeTool);
+    AppLog(@"tool switched to %ld", (long)self.activeTool);
 }
 
 /* 让三个 web view 的可见性跟上 activeTool。
@@ -1502,7 +1502,7 @@ static BOOL POCFlag(NSString *name) {
     if (self.activeTool >= 0 && self.activeTool <= 3) {
         self.window.title = toolTitles[self.activeTool];
     }
-    PoCLog(@"tool visibility ring=%d interp=%d vf=%d rhythm=%d",
+    AppLog(@"tool visibility ring=%d interp=%d vf=%d rhythm=%d",
            !self.webView.hidden, !self.interpWebView.hidden,
            !self.vfWebView.hidden, !self.rhythmWebView.hidden);
 }
@@ -1626,7 +1626,7 @@ static BOOL POCFlag(NSString *name) {
         return;
     }
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:
-                      @"Documents/ChatGPT/论文paper/tools/mac-shell-poc/README.md"];
+                      @"Documents/ChatGPT/论文paper/tools/app-shell/README.md"];
     if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
         [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
     }

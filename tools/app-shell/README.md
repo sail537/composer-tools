@@ -21,7 +21,7 @@
     A/B 对）与**休止符输入**（`z1/8`）
 - 切换工具会停掉另一个工具的声音，避免两路同时响。
 - 面板材质固定为**真玻璃**（`NSGlassEffectView`）；菜单「显示 → 面板材质」里保留了
-  磨砂回退项，调试时也可建 `/tmp/poc-use-frosted` 切到磨砂。
+  磨砂回退项，调试时也可建 `/tmp/debug-use-frosted` 切到磨砂。
 
 ## 资源与 TCC（重要）
 
@@ -31,13 +31,13 @@
   `rhythm-interp-demo.html`、`rhythm-interp-core.js` 与 `vendor/abcjs/`。
 - 因此不访问 `~/Documents`，不会触发“访问文稿文件夹”的系统授权弹窗。
   **之前偶发卡死就是等待这个 TCC 弹窗时主线程被阻塞。**
-- 需要实时编辑网页源码时，创建 `/tmp/poc-use-external`，会切回
+- 需要实时编辑网页源码时，创建 `/tmp/debug-use-external`，会切回
   `~/Documents/ChatGPT/论文paper/tools/...`；首次会弹一次授权，允许即可。
 
 ## 运行与重编译
 
 - 已编译：`build/算法作曲工具集.app`
-- 重新编译：`./build-poc.sh`
+- 重新编译：`./build-app.sh`
 - 环境：macOS 26+（本机 macOS 27），Command Line Tools 即可，不需要 Xcode
 
 ## 已验证（日志）
@@ -66,7 +66,7 @@
 3. 悬浮面板必须是独立 `NSPanel`（不能 `addChildWindow:`），否则主窗口最小化时会一起消失。
 4. SwiftUI 属性包装（`@State` 等）依赖 Xcode 的 `SwiftUIMacros`；只有 CLT 时走 AppKit。
    这是编译期限制，不影响运行性能。
-5. 默认只读 bundle 资源以避免 TCC 阻塞；外置路径仅在 `/tmp/poc-use-external` 时使用。
+5. 默认只读 bundle 资源以避免 TCC 阻塞；外置路径仅在 `/tmp/debug-use-external` 时使用。
 6. 面板**位置**可以 autosave，但**尺寸必须跟随内容**：旧尺寸会让窄内容右侧留白；
    读数标签的 `preferredMaxLayoutWidth` 放宽到 560pt，避免 curve/步进被省略号截断。
 7. 窗口使用 `FullSizeContentView` 时，内容必须约束到 `root.safeAreaLayoutGuide`
@@ -86,9 +86,9 @@
 
 ## 调试开关（在 `/tmp` 下建同名文件）
 
-- `poc-no-panel` / `poc-panel-simple` / `poc-panel-plain` / `poc-panel-no-order` / `poc-panel-no-autosave`
-- `poc-no-web` / `poc-no-interp` / `poc-no-vf` / `poc-no-rhythm` / `poc-no-placeholder` / `poc-visual-effect`
-- `poc-start-tool-0` … `poc-start-tool-3`：启动即打开指定工具
-- `poc-use-external`
+- `debug-no-panel` / `debug-panel-simple` / `debug-panel-plain` / `debug-panel-no-order` / `debug-panel-no-autosave`
+- `debug-no-web` / `debug-no-interp` / `debug-no-vf` / `debug-no-rhythm` / `debug-no-placeholder` / `debug-visual-effect`
+- `debug-start-tool-0` … `debug-start-tool-3`：启动即打开指定工具
+- `debug-use-external`
 
-日志：`/tmp/composer-poc.log`
+日志：`/tmp/algorithmic-composer.log`

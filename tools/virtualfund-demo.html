@@ -130,6 +130,16 @@
     .key.black:hover { background: #2c2c2e; }
     input[type=range] { accent-color: var(--accent); }
   }
+
+  /* ---------- 选中态与五线谱尺寸（必须放在最后） ---------- */
+  /* 深色模式里 .key.white / .key.black 又声明了一遍，权重相同、位置在后，
+     会把前面的选中色整个盖掉——所以这里用 .keyboard .key 提高一级权重，
+     明暗两种外观下选中的音都看得见。 */
+  .keyboard .key.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .keyboard .key.sel:hover { filter: brightness(1.1); }
+  /* 五线谱限制显示宽度：这份谱只有三栏、长宽接近 1:1，
+     按卡片宽度拉满会变成一块约 860×785 的巨图。 */
+  #staff svg { width: 100%; max-width: 420px; height: auto; margin: 0 auto; }
 </style>
 </head>
 <body>
