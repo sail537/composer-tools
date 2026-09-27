@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>节奏插值 Demo</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #1c1c1e;
+    --muted: #6b6b70;
+    --line: #d9d9de;
+    --bg: #f6f6f8;
+    --accent: #0a6cff;
+    --accent-soft: #e8f0ff;
+    --warn: #b26a00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 26px 20px 56px;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h1 .sub { font-size: 12.5px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+  h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 5px; }
+  input[type=text], input[type=number], select {
+    font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  input[type=text] { width: 100%; }
+  input[type=number] { width: 88px; }
+  input[type=range] { width: 160px; vertical-align: middle; }
+  button {
+    font: inherit; font-size: 13.5px; padding: 8px 13px; border-radius: 8px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  button:hover { border-color: #b9b9c0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #0a5ede; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .inline { font-size: 12.5px; color: var(--muted); }
+  .readout { margin-top: 8px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .readout b { color: var(--ink); font-weight: 600; }
+  .status { font-size: 12.5px; color: var(--warn); }
+  svg { display: block; width: 100%; height: auto; }
+  .table-wrap { max-height: 360px; overflow: auto; border: 1px solid #ededf1; border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #ededf1; font-size: 13px; }
+  th { position: sticky; top: 0; background: #fafafc; font-size: 11.5px; color: var(--muted); font-weight: 600; z-index: 1; }
+  .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; }
+  .staff-block { margin-bottom: 8px; }
+  .staff-label { font-size: 11.5px; color: var(--muted); }
+  .staff-info { color: var(--muted); opacity: 0.75; }
+  .abcjs-container { background: transparent; }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f2f2f7;
+      --muted: #a1a1aa;
+      --line: rgba(255, 255, 255, 0.16);
+      --bg: #1c1c1e;
+      --accent-soft: rgba(10, 108, 255, 0.28);
+      --warn: #ffb340;
+    }
+    body { background: var(--bg); color: var(--ink); }
+    .card { background: #2c2c2e; border-color: var(--line); }
+    input[type=text], input[type=number], select, button {
+      background: #2c2c2e; color: var(--ink); border-color: var(--line);
+    }
+    select option { background: #2c2c2e; color: var(--ink); }
+    input::placeholder { color: #8e8e93; }
+    button:hover { border-color: #48484a; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .table-wrap { border-color: rgba(255, 255, 255, 0.12); }
+    th { background: #2c2c2e; }
+    th, td { border-bottom-color: rgba(255, 255, 255, 0.10); }
+    input[type=range] { accent-color: var(--accent); }
+    #staves .abcjs-container svg { filter: invert(1); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>节奏插值 Demo <span class="sub">Rhythm Interpolation · OpenMusic 同构</span></h1>
+
+  <section class="card">
+    <h2>1 · 两个节奏</h2>
+    <div class="row">
+      <div class="field" style="flex:1 1 320px">
+        <label>节奏 A（时值）</label>
+        <input type="text" id="a-text" spellcheck="false" value="1/8 1/8 1/4 1/2">
+      </div>
+      <div class="field" style="flex:1 1 320px">
+        <label>节奏 B（时值）</label>
+        <input type="text" id="b-text" spellcheck="false" value="1/16 1/16 1/16 5/16">
+      </div>
+    </div>
+    <div class="field hint">时值以 <b>全音符 = 1</b>：<span class="mono">1/4</span> = 四分音符 = 1 拍，
+      <span class="mono">1/8</span> = 八分音符，<span class="mono">1/12</span> = 三连音八分音符；空格或逗号分隔。</div>
+    <div class="presets" style="margin-top:10px">
+      <button type="button" id="preset-equal">等长示例（逐项时值）</button>
+      <button type="button" id="preset-unequal">不等长示例（时间弯曲）</button>
+      <button type="button" id="preset-triplet">三连音示例</button>
+      <button type="button" id="preset-quint">五连音示例</button>
+      <button type="button" id="preset-sept">七连音示例</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2 · 参数</h2>
+    <div class="row">
+      <div class="field">
+        <label>策略</label>
+        <select id="strategy">
+          <option value="dx">逐项时值（需同长度）</option>
+          <option value="warp">时间弯曲（长度可不同）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>步数 samples</label>
+        <input type="number" id="samples" min="1" max="64" value="5">
+      </div>
+      <div class="field">
+        <label>弯曲度 curve</label>
+        <input type="range" id="curve" min="-1" max="1" step="0.01" value="0">
+        <span class="inline" id="curve-read">0.00</span>
+      </div>
+      <div class="field">
+        <label>速度 BPM</label>
+        <input type="number" id="bpm" min="30" max="300" value="120">
+      </div>
+      <div class="field">
+        <button type="button" class="primary" id="apply">计算</button>
+      </div>
+    </div>
+    <div class="controls">
+      <button type="button" id="play">▶ 播放</button>
+      <button type="button" id="stop">■ 停止</button>
+      <button type="button" id="export-svg">导出时间线 SVG</button>
+      <span class="inline" id="status"></span>
+    </div>
+    <div class="controls" style="margin-top:8px">
+      <label class="inline" for="export-step">导出哪一步</label>
+      <select id="export-step"></select>
+      <button type="button" class="primary" id="export-midi">导出 MIDI</button>
+      <button type="button" id="export-staff-svg">导出五线谱 SVG</button>
+      <span class="inline">MIDI 默认按打击乐（GM 鼓通道）导出，每个起点一个音，音长用时值</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3 · 五线谱（量化后）</h2>
+    <div class="row">
+      <div class="field">
+        <label>记谱引擎</label>
+        <select id="engine">
+          <option value="global" selected>全局量化（混合·嵌套可读）</option>
+          <option value="classic">经典（等值连音扫描）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>拍号</label>
+        <select id="meter">
+          <option value="4/4" selected>4/4</option>
+          <option value="3/4">3/4</option>
+          <option value="2/4">2/4</option>
+          <option value="5/4">5/4</option>
+          <option value="6/8">6/8（复拍子）</option>
+          <option value="9/8">9/8（复拍子）</option>
+          <option value="12/8">12/8（复拍子）</option>
+        </select>
+        <div class="hint">决定小节线位置与「一拍」的长度；6/8 这类复拍子按惯例
+          把附点拍当一拍，连音括号也优先落在一拍之内。</div>
+      </div>
+      <div class="field">
+        <label>最小音符值</label>
+        <select id="quant">
+          <option value="0.125">1/8</option>
+          <option value="0.0625" selected>1/16</option>
+          <option value="0.03125">1/32</option>
+          <option value="0.015625">1/64</option>
+        </select>
+      </div>
+      <div class="field" style="flex:1 1 340px">
+        <label>连音比例（n:m — n 个音占 m 个同值音符的时间）</label>
+        <input type="text" id="tuplets" spellcheck="false" value="3:2, 5:4, 6:4, 7:4, 9:8">
+        <div class="hint">左侧为最小音符值（量化下限）。连音写法按顺序优先识别：
+          <span class="mono">3:2</span> 三连音、<span class="mono">5:4</span> 五连音、
+          <span class="mono">7:4</span> 七连音、<span class="mono">6:4</span> 六连音、
+          <span class="mono">2:3</span> 二连音（复合拍）。留空或用无效写法 = 默认值。</div>
+      </div>
+    </div>
+    <div class="presets" style="margin-top:8px">
+      <button type="button" id="tp-triplet">仅三连音 3:2</button>
+      <button type="button" id="tp-357">三五七 3:2 · 5:4 · 7:4</button>
+      <button type="button" id="tp-common">常见全套（含 6:4 / 9:8 / 12:8）</button>
+      <button type="button" id="tp-compound">复合拍 2:3 · 4:3</button>
+    </div>
+    <div class="hint" style="margin-top:6px">连音不限于 3/5/7，通式是 <span class="mono">n:m</span>。
+      ABC 记谱的 <span class="mono">(n:m</span> 语法只接受 n ≤ 9，所以 <span class="mono">12:8</span>
+      会被自动拆成两组 <span class="mono">6:4</span>；<span class="mono">11:8</span>、<span class="mono">13:8</span>
+      无法均分，记谱时退回标准音符值。</div>
+    <div class="row" style="margin-top:10px">
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600">
+          <input type="checkbox" id="prefer-tuplets">
+          <span>连音优先（把等值音组优先读成连音：二连音、四连音等）</span>
+        </label>
+        <div class="hint">默认关闭时，能写成标准音符（如附点八分）就优先写标准音符；
+          只有 1/20、1/28、1/18 这类无法写成标准音符的时值才必然走连音。</div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:8px">五线谱显示量化后的记谱；下方时间线与表格保留未量化的原始数据。
+      <b>全局量化</b>会把整条节奏切成若干片段做动态规划：允许连音组内混合时值
+      （三连音里夹四分 → <span class="mono">(3:2:2B2 B</span>）、跨小节的音自动切开加延音线，
+      并标出真实记谱误差。<b>经典</b>引擎只做等值连音扫描。
+      节奏比「最小音符值」细时（例如插值出的 64 分网格），两种引擎都只能近似；
+      把最小音符值选到 1/64 即可精确记谱。</div>
+    <div id="staves"></div>
+  </section>
+
+  <section class="card">
+    <h2>4 · 时间线</h2>
+    <div id="timeline"></div>
+    <div class="readout" id="summary"></div>
+  </section>
+
+  <section class="card">
+    <h2>5 · 数据</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>t</th><th>权重 w</th><th>时值（全音符=1）</th><th>起点（全音符=1）</th><th>总时长</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script src="vendor/abcjs/abcjs-basic-min.js"></script>
+<script src="rhythm-interp-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = window.RhythmCore;
+  var $ = function (id) { return document.getElementById(id); };
+  var lastResult = null;
+  var lastSVG = '';
+  var staffItems = [];
+
+  function isDark() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  function render() {
+    try {
+      var a = C.parseRhythm($('a-text').value);
+      var b = C.parseRhythm($('b-text').value);
+      var samples = Math.max(1, Math.min(64, parseInt($('samples').value, 10) || 5));
+      var curve = parseFloat($('curve').value) || 0;
+      var strategy = $('strategy').value;
+      lastResult = C.interpolateRhythm(a, b, samples, curve, strategy);
+      lastSVG = C.renderTimelineSVG(lastResult, { dark: isDark() });
+      $('timeline').innerHTML = lastSVG;
+      renderTable();
+      renderStaves();
+      var maxTotal = Math.max.apply(null, lastResult.steps.map(function (s) { return s.total; }));
+      $('summary').innerHTML = '<b>' + lastResult.steps.length + '</b> 个中间状态 · 最大总时长 <b>'
+        + C.formatNumber(maxTotal * 4, 2) + '</b> 拍（' + C.formatNumber(maxTotal, 3) + ' 个全音符）· 策略：'
+        + (strategy === 'dx' ? '逐项时值（OM INTERPOLATION on dx）' : '时间弯曲（BPF / 归一化索引）');
+      $('status').textContent = '';
+      reportState();
+    } catch (err) {
+      lastResult = null;
+      lastSVG = '';
+      $('timeline').innerHTML = '<div class="empty status">' + err.message + '</div>';
+      $('summary').textContent = '';
+      $('tbody').innerHTML = '';
+      $('staves').innerHTML = '';
+      $('status').textContent = err.message;
+    }
+  }
+
+  function renderTable() {
+    var tb = $('tbody');
+    tb.innerHTML = '';
+    lastResult.steps.forEach(function (step) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (step.index + 1) + '</td>'
+        + '<td>' + step.t.toFixed(3) + '</td>'
+        + '<td>' + step.weight.toFixed(4) + '</td>'
+        + '<td class="mono">' + step.durations.map(function (d) { return C.formatNumber(d, 4); }).join(' · ') + '</td>'
+        + '<td class="mono">' + step.onsets.map(function (x) { return C.formatNumber(x, 4); }).join(' · ') + '</td>'
+        + '<td>' + C.formatNumber(step.total, 4) + '</td>';
+      tb.appendChild(tr);
+    });
+  }
+
+  /* ---------- 五线谱（abcjs） ---------- */
+  function renderStaves() {
+    var host = $('staves');
+    host.innerHTML = '';
+    staffItems = [];
+    if (!lastResult) return;
+    if (!window.ABCJS) {
+      host.innerHTML = '<div class="empty status">abcjs 未加载</div>';
+      return;
+    }
+    var minValue = parseFloat($('quant').value) || 0.0625;
+    var tuplets = C.parseTuplets($('tuplets').value);
+    var preferTuplets = $('prefer-tuplets').checked;
+    var engine = $('engine').value;
+    var meter = $('meter').value.split('/').map(Number);
+    var items = [
+      { label: 'A（起点节奏）', step: { onsets: C.durationsToOnsets(lastResult.a), durations: lastResult.a, total: C.totalDuration(lastResult.a) } },
+      { label: 'B（终点节奏）', step: { onsets: C.durationsToOnsets(lastResult.b), durations: lastResult.b, total: C.totalDuration(lastResult.b) } }
+    ];
+    lastResult.steps.forEach(function (step, j) {
+      items.push({ label: '#' + (j + 1), step: step });
+    });
+    items.forEach(function (item) {
+      var block = document.createElement('div');
+      block.className = 'staff-block';
+      var label = document.createElement('div');
+      label.className = 'staff-label';
+      label.textContent = item.label;
+      var score = document.createElement('div');
+      score.className = 'abcjs-container';
+      block.appendChild(label);
+      block.appendChild(score);
+      host.appendChild(block);
+      try {
+        var opts = { minValue: minValue, tuplets: tuplets, preferTuplets: preferTuplets,
+                     meter: meter, title: item.label };
+        var abc;
+        var info;
+        if (engine === 'global') {
+          var quantized = C.quantizeNotation(item.step, opts);
+          abc = C.abcFromQuantized(quantized, opts);
+          var errBeats = quantized.maxError * 4;
+          info = (quantized.maxError < 1e-9)
+            ? '精确记谱'
+            : '最大记谱误差 ' + C.formatNumber(errBeats, 3) + ' 拍（'
+              + C.formatNumber(quantized.maxError / minValue * 100, 1) + '% 最小音符值'
+              + (minValue > 0.0157 ? ' · 把最小音符值调细可精确记谱' : '') + '）';
+        } else {
+          abc = C.stepToABC(item.step, opts);
+          info = '等值连音扫描';
+        }
+        if (info) {
+          var infoNode = document.createElement('span');
+          infoNode.className = 'staff-info';
+          infoNode.textContent = ' · ' + info;
+          label.appendChild(infoNode);
+        }
+        window.ABCJS.renderAbc(score, abc, {
+          responsive: 'resize',
+          staffwidth: 880,
+          scale: 0.9,
+          add_classes: true
+        });
+        var svgEl = score.querySelector('svg');
+        staffItems.push({
+          label: item.label, step: item.step, abc: abc,
+          svg: svgEl ? svgEl.outerHTML : ''
+        });
+      } catch (err) {
+        score.innerHTML = '<div class="empty status">记谱失败：' + err.message + '</div>';
+        staffItems.push({ label: item.label, step: item.step, abc: '', svg: '' });
+      }
+    });
+    fillExportSteps();
+  }
+
+  /* 导出步骤下拉：把当前算出的每一步都列出来 */
+  function fillExportSteps() {
+    var sel = $('export-step');
+    var previous = sel.value;
+    sel.innerHTML = '';
+    staffItems.forEach(function (item, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = item.label;
+      sel.appendChild(o);
+    });
+    if (staffItems.length) {
+      var keep = staffItems[parseInt(previous, 10)] ? previous : '0';
+      sel.value = keep;
+    }
+  }
+
+  /* ---------- 播放（节拍器式点击） ---------- */
+  var actx = null;
+  var voices = [];
+
+  function audio() {
+    if (!actx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+
+  function stopAudio() {
+    voices.forEach(function (v) { try { v.stop(); } catch (e) {} try { v.disconnect(); } catch (e) {} });
+    voices = [];
+    $('status').textContent = '已停止';
+  }
+
+  function click(when, index) {
+    var osc = actx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 660 + index * 40;
+    var gain = actx.createGain();
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(0.18, when + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.045);
+    osc.connect(gain);
+    gain.connect(actx.destination);
+    osc.start(when);
+    osc.stop(when + 0.06);
+    voices.push(osc, gain);
+  }
+
+  function play() {
+    if (!lastResult) { render(); }
+    if (!lastResult) return;
+    audio();
+    stopAudio();
+    var bpm = Math.max(30, Math.min(300, parseFloat($('bpm').value) || 120));
+    var beatSeconds = 60 / bpm;
+    var wholeNoteSeconds = beatSeconds * 4;   /* 时值单位是全音符 */
+    var cursor = actx.currentTime + 0.12;
+    lastResult.steps.forEach(function (step, j) {
+      var stepStart = cursor;
+      step.onsets.forEach(function (onset) {
+        click(stepStart + onset * wholeNoteSeconds, j);
+      });
+      cursor = stepStart + step.total * wholeNoteSeconds + 0.3;
+    });
+    $('status').textContent = '播放中…';
+    reportState({ playing: true });
+    var total = (cursor - actx.currentTime) * 1000;
+    setTimeout(function () {
+      if (voices.length) $('status').textContent = '播放结束';
+      reportState({ playing: false });
+    }, total + 300);
+  }
+
+  function download(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  /* ---------- 事件 ---------- */
+  ['a-text', 'b-text', 'samples', 'strategy'].forEach(function (id) {
+    $(id).addEventListener('input', render);
+    $(id).addEventListener('change', render);
+  });
+  $('curve').addEventListener('input', function () {
+    $('curve-read').textContent = parseFloat(this.value).toFixed(2);
+    render();
+  });
+  $('apply').addEventListener('click', render);
+  $('quant').addEventListener('change', renderStaves);
+  $('engine').addEventListener('change', renderStaves);
+  $('meter').addEventListener('change', renderStaves);
+  $('tuplets').addEventListener('input', renderStaves);
+  $('tuplets').addEventListener('change', renderStaves);
+  $('prefer-tuplets').addEventListener('change', renderStaves);
+  $('play').addEventListener('click', play);
+  $('stop').addEventListener('click', stopAudio);
+  $('export-svg').addEventListener('click', function () {
+    if (!lastSVG) return;
+    download(new Blob([lastSVG], { type: 'image/svg+xml' }), 'rhythm-timeline.svg');
+    $('status').textContent = '已导出 rhythm-timeline.svg';
+  });
+
+  function selectedStaff() {
+    var i = parseInt($('export-step').value, 10) || 0;
+    return staffItems[i] || null;
+  }
+
+  $('export-staff-svg').addEventListener('click', function () {
+    var item = selectedStaff();
+    if (!item || !item.svg) {
+      $('status').textContent = '还没有可导出的五线谱';
+      return;
+    }
+    var name = 'rhythm-' + item.label.replace(/[^\w#]+/g, '') + '-staff.svg';
+    download(new Blob([item.svg], { type: 'image/svg+xml' }), name);
+    $('status').textContent = '已导出 ' + name;
+  });
+
+  $('export-midi').addEventListener('click', function () {
+    var item = selectedStaff();
+    if (!item) {
+      $('status').textContent = '先算出结果再导出';
+      return;
+    }
+    var meter = $('meter').value.split('/').map(Number);
+    var out = C.buildRhythmMidi(item.step, {
+      bpm: 120, meter: meter, percussion: true,
+      trackName: 'Rhythm ' + item.label
+    });
+    var name = 'rhythm-' + item.label.replace(/[^\w#]+/g, '') + '-midi.mid';
+    download(new Blob([out.bytes], { type: 'audio/midi' }), name);
+    $('status').textContent = '已导出 ' + name + '（' + out.eventCount + ' 个音）';
+  });
+  $('preset-equal').addEventListener('click', function () {
+    $('a-text').value = '1/8 1/8 1/4 1/2';
+    $('b-text').value = '1/16 1/16 1/16 5/16';
+    $('strategy').value = 'dx';
+    render();
+  });
+  $('preset-unequal').addEventListener('click', function () {
+    $('a-text').value = '1/8 1/8 1/4 1/2';
+    $('b-text').value = '1/16 1/16 1/16 1/16 1/4';
+    $('strategy').value = 'warp';
+    render();
+  });
+  $('preset-triplet').addEventListener('click', function () {
+    $('a-text').value = '1/12 1/12 1/12 1/4';
+    $('b-text').value = '1/12 1/12 1/12 1/2';
+    $('strategy').value = 'dx';
+    render();
+  });
+  $('preset-quint').addEventListener('click', function () {
+    $('a-text').value = '1/20 1/20 1/20 1/20 1/20 1/4';
+    $('b-text').value = '1/20 1/20 1/20 1/20 1/20 1/2';
+    $('strategy').value = 'warp';
+    render();
+  });
+  $('preset-sept').addEventListener('click', function () {
+    $('a-text').value = '1/28 1/28 1/28 1/28 1/28 1/28 1/28 1/4';
+    $('b-text').value = '1/28 1/28 1/28 1/28 1/28 1/28 1/28 1/2';
+    $('strategy').value = 'warp';
+    render();
+  });
+  var tupletPresets = {
+    'tp-triplet': '3:2',
+    'tp-357': '3:2, 5:4, 7:4',
+    'tp-common': '3:2, 5:4, 6:4, 7:4, 9:8, 12:8',
+    'tp-compound': '2:3, 3:2, 4:3, 5:4, 7:4'
+  };
+  Object.keys(tupletPresets).forEach(function (id) {
+    $(id).addEventListener('click', function () {
+      $('tuplets').value = tupletPresets[id];
+      /* 复合拍二连音必须“连音优先”才读得出来；其它预设按常规标准记谱 */
+      $('prefer-tuplets').checked = (id === 'tp-compound');
+      renderStaves();
+    });
+  });
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+  }
+
+  /* ---------- 与「作曲工具」app 外壳的桥 ---------- */
+
+  function postBridge(payload) {
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge) {
+        window.webkit.messageHandlers.bridge.postMessage(payload);
+      }
+    } catch (e) {}
+  }
+
+  function reportState(extra) {
+    var info = {
+      tool: 'rhythm',
+      steps: lastResult ? lastResult.steps.length : 0,
+      samples: lastResult ? lastResult.samples : 0,
+      curve: lastResult ? lastResult.curve : 0,
+      strategy: lastResult ? lastResult.strategy : $('strategy').value,
+      meter: $('meter') ? $('meter').value : '4/4',
+      engine: $('engine') ? $('engine').value : 'global',
+      playing: false
+    };
+    if (extra) {
+      for (var key in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, key)) info[key] = extra[key];
+      }
+    }
+    postBridge(info);
+  }
+
+  window.RhythmAPI = {
+    play: function () { play(); },
+    stop: function () {
+      stopAudio();
+      $('status').textContent = '已停止';
+      reportState({ playing: false });
+    },
+    exportMidi: function () { $('export-midi').click(); },
+    exportSvg: function () { $('export-staff-svg').click(); },
+    report: function () { reportState(); }
+  };
+  setInterval(function () {
+    postBridge({
+      tool: 'rhythm',
+      heartbeat: Date.now(),
+      audioState: actx ? actx.state : 'none',
+      audioTime: actx ? actx.currentTime : 0
+    });
+  }, 1000);
+
+  render();
+  reportState();
+})();
+</script>
+</body>
+</html>

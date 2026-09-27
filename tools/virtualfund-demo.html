@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>虚拟基音计算器</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #1c1c1e;
+    --muted: #6b6b70;
+    --line: #d9d9de;
+    --bg: #f6f6f8;
+    --accent: #0a6cff;
+    --accent-soft: #e8f0ff;
+    --warn: #b26a00;
+    --ok: #1a7f5a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 26px 20px 56px;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 .sub { font-size: 12.5px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+  h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 5px; }
+  input[type=number], input[type=text], select {
+    font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  input[type=text] { width: 100%; }
+  input[type=number] { width: 88px; }
+  input[type=range] { width: 190px; vertical-align: middle; }
+  button {
+    font: inherit; font-size: 13.5px; padding: 8px 13px; border-radius: 8px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  button:hover { border-color: #b9b9c0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #0a5ede; }
+  button.ghost { color: var(--muted); }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .controls + .controls { margin-top: 10px; }
+  .readout { margin-top: 6px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .readout b { color: var(--ink); font-weight: 600; }
+  .status { font-size: 12.5px; color: var(--warn); }
+  .ok-text { font-size: 12.5px; color: var(--ok); }
+  svg { display: block; width: 100%; height: auto; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; min-height: 28px; margin-bottom: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px;
+    padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip:hover { filter: brightness(0.96); }
+  .chip .x { color: var(--muted); font-size: 11px; }
+  .keyboard-wrap { overflow-x: auto; padding: 4px 0 2px; }
+  .keyboard { position: relative; height: 100px; margin: 0 auto; }
+  .key {
+    position: absolute; top: 0; padding: 0; margin: 0; border: 1px solid #c3c6cd;
+    cursor: pointer; border-radius: 0 0 4px 4px; font: inherit;
+  }
+  .key.white { height: 96px; background: #fff; color: #8a8a93; }
+  .key.black { height: 62px; background: #3a3a3e; color: #d7d7dd; z-index: 2; border-color: #2c2c30; }
+  .key.white:hover { background: #f2f5fb; }
+  .key.black:hover { background: #4a4a50; }
+  .key .klabel { position: absolute; bottom: 4px; left: 0; right: 0; font-size: 8px; text-align: center; pointer-events: none; }
+  .key.black .klabel { bottom: 4px; color: #e7e7ee; }
+  .key.sel { background: var(--accent); color: #fff; }
+  .result-head { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; }
+  .big {
+    font-size: 30px; font-weight: 600; letter-spacing: -.5px; font-variant-numeric: tabular-nums;
+  }
+  .big.dim { color: var(--muted); font-size: 19px; font-weight: 500; }
+  .metrics { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .metrics b { color: var(--ink); }
+  .table-wrap { max-height: 340px; overflow: auto; border: 1px solid #ededf1; border-radius: 8px; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #ededf1; font-size: 13px; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #fafafc; font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .3px; z-index: 1; }
+  tr:last-child td { border-bottom: none; }
+  .num { color: var(--muted); }
+  .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+  .bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--accent); vertical-align: middle; }
+  .bar.over { background: var(--warn); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: none; border-radius: 0; padding: 7px 12px; font-size: 12.5px; }
+  .seg button.on { background: var(--accent); color: #fff; }
+
+  /* ---------- 深色模式 ---------- */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f2f2f7;
+      --muted: #a1a1aa;
+      --line: rgba(255, 255, 255, 0.16);
+      --bg: #1c1c1e;
+      --accent-soft: rgba(10, 108, 255, 0.28);
+      --warn: #ffb340;
+      --ok: #4ade80;
+    }
+    body { background: var(--bg); color: var(--ink); }
+    .card { background: #2c2c2e; border-color: var(--line); }
+    input[type=number], input[type=text], select, button {
+      background: #2c2c2e; color: var(--ink); border-color: var(--line);
+    }
+    select option { background: #2c2c2e; color: var(--ink); }
+    button:hover { border-color: #48484a; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .seg button { background: #2c2c2e; color: var(--ink); }
+    .seg button.on { background: var(--accent); color: #fff; }
+    .table-wrap { border-color: rgba(255, 255, 255, 0.12); }
+    th { background: #2c2c2e; }
+    th, td { border-bottom-color: rgba(255, 255, 255, 0.10); }
+    .key.white { background: #e5e5ea; color: #3a3a3e; border-color: #8e8e93; }
+    .key.white:hover { background: #d1d1d6; }
+    .key.black { background: #1c1c1e; color: #d7d7dd; border-color: #000; }
+    .key.black:hover { background: #2c2c2e; }
+    input[type=range] { accent-color: var(--accent); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>虚拟基音计算器 <span class="sub">Virtual Fundamental · 移植自 OpenMusic OMTristan 的 virtual-fund</span></h1>
+
+  <section class="card">
+    <h2>1 · 和弦输入</h2>
+    <div class="chips" id="chips"></div>
+    <input type="text" id="chord-text" spellcheck="false" placeholder="例如 60 64 67，或 C4 E4 G4">
+    <div class="controls" style="margin-top:10px">
+      <button type="button" id="apply">应用文本</button>
+      <button type="button" id="center-keys">定位已选音</button>
+      <button type="button" class="ghost" id="clear">清空</button>
+      <span class="num">示例：</span>
+      <button type="button" data-example="60 64 67">大三和弦</button>
+      <button type="button" data-example="60 63 67">小三和弦</button>
+      <button type="button" data-example="60 64 68">增三和弦</button>
+      <button type="button" data-example="60 63 66">减三和弦</button>
+      <button type="button" data-example="60 64 67 71">大七和弦</button>
+      <button type="button" data-example="36 48 55 60 64 67 71">谐波集合</button>
+    </div>
+    <div class="keyboard-wrap">
+      <div class="keyboard" id="keyboard" role="group" aria-label="钢琴键盘"></div>
+    </div>
+    <div class="readout">全部 88 键（A0–C8）；点击琴键添加 / 移除。示例按钮会替换当前和弦。</div>
+  </section>
+
+  <section class="card">
+    <h2>2 · 分析参数</h2>
+    <div class="row">
+      <div class="field">
+        <label for="cents">容差 <span class="mono" id="cents-read">50¢</span></label>
+        <input type="range" id="cents" min="0" max="120" step="1" value="50">
+        <div class="hint">以音分给出，对应 OM 的 <span class="mono">approx</span> 参数
+          （内部换算 <span class="mono">2^(cents/1200) − 1</span>）。OM 默认 50¢。
+          <b>0¢ 时平均律和弦通常无解</b>，这是常态。</div>
+      </div>
+      <div class="field">
+        <label for="series">五线谱上的泛音序列长度</label>
+        <input type="number" id="series" min="1" max="24" step="1" value="12">
+        <div class="hint">画出第 1…N 号泛音，用来对照和弦落在哪几个位置</div>
+      </div>
+      <div class="field">
+        <label for="scan-to">扫描上限</label>
+        <input type="number" id="scan-to" min="10" max="300" step="10" value="120">
+        <div class="hint">精度扫描图的容差范围（0 → 该值，步长 1¢）</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3 · 虚基音</h2>
+    <div id="result"></div>
+    <div id="partials"></div>
+  </section>
+
+  <section class="card">
+    <h2>4 · 五线谱</h2>
+    <div id="staff"></div>
+    <div class="controls" style="margin-top:10px">
+      <button type="button" id="play-fund">播放虚基音</button>
+      <button type="button" id="play-chord">播放和弦</button>
+      <button type="button" id="play-series">播放泛音序列</button>
+      <button type="button" class="ghost" id="stop">停止</button>
+      <span class="num" id="audio-status"></span>
+    </div>
+    <div class="readout">左：输入和弦　中：虚基音　右：以虚基音为 1 号的泛音序列。
+      和弦各音应当与序列中的某几个音重合。</div>
+  </section>
+
+  <section class="card">
+    <h2>5 · 精度扫描</h2>
+    <div id="sweep"></div>
+    <div class="readout" id="sweep-note"></div>
+  </section>
+
+  <section class="card">
+    <h2>6 · 导出</h2>
+    <div class="row">
+      <div class="field">
+        <label for="micro">微分音写法</label>
+        <select id="micro">
+          <option value="bend" selected>Pitch Bend（推荐）</option>
+          <option value="mts">MIDI Tuning Standard</option>
+          <option value="plain">12 平均律（取整）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="what">MIDI 内容</label>
+        <select id="what">
+          <option value="both" selected>虚基音 + 和弦</option>
+          <option value="fund">只导出虚基音</option>
+          <option value="series">泛音序列</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="bend-range">Pitch Bend 范围</label>
+        <select id="bend-range">
+          <option value="2" selected>±2 半音</option>
+          <option value="12">±12 半音</option>
+        </select>
+      </div>
+      <div class="controls">
+        <button type="button" class="primary" id="export-midi">导出 MIDI</button>
+        <button type="button" id="export-svg">导出五线谱 SVG</button>
+      </div>
+    </div>
+    <div class="readout" id="export-status"></div>
+  </section>
+
+  <section class="card">
+    <h2>算法说明</h2>
+    <div class="readout">
+      本页是 IRCAM OpenMusic 的 <span class="mono">virtual-fund</span>（OMTristan 库，
+      另有 Esquisse 库的同源实现）的移植。核心是 Gérard Assayag 1993 年的
+      <span class="mono">tolerant-gcd</span>：一个带容差的浮点最大公约数。
+      它返回<b>最高的</b>那个、能让和弦里每个音都（近似）成为其整数倍泛音的基音——
+      所以结果永远不高于和弦的最低音。容差越大，能容纳的解越多，返回的基音也就越高，
+      因此<b>容差一变，答案可能跳到另一个音</b>，这不是精度差异，而是不同的音乐解读。
+    </div>
+  </section>
+</div>
+
+<script src="interpolation-core.js"></script>
+<script src="virtualfund-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var I = window.InterpCore;
+  var V = window.VirtualFundCore;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var LOW = 21, HIGH = 108, WHITE_W = 17, BLACK_W = 11;
+  var BLACK_PC = new Set([1, 3, 6, 8, 10]);
+  var keyEls = {};
+  var lastStaffSVG = '';
+  var lastSweep = null;
+  var lastReport = null;
+
+  var state = {
+    chord: [60, 64, 67],
+    cents: 50,
+    series: 12,
+    scanTo: 120,
+    micro: 'bend',
+    what: 'both',
+    bendRange: 2,
+    vol: 0.5
+  };
+
+  function isDark() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  /* ---------- 钢琴键盘 ---------- */
+
+  (function buildKeyboard() {
+    var kb = $('keyboard');
+    var whiteCount = 0;
+    for (var m = LOW; m <= HIGH; m++) if (!BLACK_PC.has(((m % 12) + 12) % 12)) whiteCount++;
+    kb.style.width = (whiteCount * WHITE_W) + 'px';
+    var wIndex = 0;
+    for (var midi = LOW; midi <= HIGH; midi++) {
+      var pc = ((midi % 12) + 12) % 12;
+      var black = BLACK_PC.has(pc);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'key ' + (black ? 'black' : 'white');
+      b.setAttribute('data-midi', String(midi));
+      b.setAttribute('aria-label', I.midiToName(midi));
+      if (black) {
+        b.style.left = (wIndex * WHITE_W - BLACK_W / 2) + 'px';
+        b.style.width = BLACK_W + 'px';
+      } else {
+        b.style.left = (wIndex * WHITE_W) + 'px';
+        b.style.width = WHITE_W + 'px';
+        wIndex++;
+      }
+      if (pc === 0 || midi === LOW) {
+        var lab = document.createElement('span');
+        lab.className = 'klabel';
+        lab.textContent = I.midiToName(midi);
+        b.appendChild(lab);
+      }
+      b.addEventListener('click', function () {
+        toggleKey(parseInt(this.getAttribute('data-midi'), 10));
+      });
+      kb.appendChild(b);
+      keyEls[midi] = b;
+    }
+  })();
+
+  function toggleKey(midi) {
+    var i = state.chord.indexOf(midi);
+    if (i >= 0) state.chord.splice(i, 1);
+    else { state.chord.push(midi); state.chord.sort(function (a, b) { return a - b; }); }
+    syncText();
+    render();
+  }
+
+  function paintKeyboard() {
+    Object.keys(keyEls).forEach(function (k) {
+      keyEls[k].classList.toggle('sel', state.chord.indexOf(parseInt(k, 10)) >= 0);
+    });
+  }
+
+  function centerKeyboard() {
+    var wrap = document.querySelector('.keyboard-wrap');
+    if (!wrap || !state.chord.length) return;
+    var avg = state.chord.reduce(function (s, v) { return s + v; }, 0) / state.chord.length;
+    var el = keyEls[Math.max(LOW, Math.min(HIGH, Math.round(avg)))];
+    if (!el) return;
+    wrap.scrollLeft = Math.max(0, el.offsetLeft + el.offsetWidth / 2 - wrap.clientWidth / 2);
+  }
+
+  /* ---------- 输入文本与 chips ---------- */
+
+  function syncText() {
+    $('chord-text').value = state.chord.join(' ');
+  }
+
+  function renderChips() {
+    var el = $('chips');
+    el.innerHTML = '';
+    if (!state.chord.length) {
+      var empty = document.createElement('span');
+      empty.className = 'empty';
+      empty.textContent = '（还没有选音）';
+      el.appendChild(empty);
+      return;
+    }
+    state.chord.forEach(function (v) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.setAttribute('role', 'button');
+      chip.setAttribute('tabindex', '0');
+      chip.setAttribute('aria-label', '移除 ' + I.midiToLabel(v));
+      var label = document.createElement('span');
+      label.textContent = I.midiToLabel(v);
+      var x = document.createElement('span');
+      x.className = 'x';
+      x.textContent = '✕';
+      chip.appendChild(label);
+      chip.appendChild(x);
+      function remove() { toggleKey(v); }
+      chip.addEventListener('click', remove);
+      chip.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); remove(); }
+      });
+      el.appendChild(chip);
+    });
+  }
+
+  /* ---------- 主渲染 ---------- */
+
+  function render() {
+    var report = V.analyze(state.chord, state.cents);
+    lastReport = report;
+    paintKeyboard();
+    renderChips();
+    renderResult(report);
+    renderPartials(report);
+    renderStaff(report);
+    renderSweep();
+    reportState();
+  }
+
+  function renderResult(report) {
+    var box = $('result');
+    box.innerHTML = '';
+    var head = document.createElement('div');
+    head.className = 'result-head';
+
+    if (!report.chord.length) {
+      var e = document.createElement('div');
+      e.className = 'big dim';
+      e.textContent = '（还没有选音）';
+      head.appendChild(e);
+      box.appendChild(head);
+      return;
+    }
+    if (!report.ok) {
+      var bad = document.createElement('div');
+      bad.className = 'big dim';
+      bad.textContent = report.reason === 'budget' ? '搜索超出预算' : '无解';
+      head.appendChild(bad);
+      var why = document.createElement('div');
+      why.className = 'status';
+      why.textContent = report.reason === 'budget'
+        ? '输入过于病态，已放弃搜索'
+        : '这个容差下不存在能把全部音归为整数倍泛音的基音。把容差调大试试——'
+          + '十二平均律不是纯律，0¢ 与过小容差下无解是常态。';
+      var wrap = document.createElement('div');
+      wrap.appendChild(head);
+      wrap.appendChild(why);
+      box.appendChild(wrap);
+      return;
+    }
+
+    var name = document.createElement('div');
+    name.className = 'big';
+    name.textContent = report.fund.label;
+    head.appendChild(name);
+
+    var m = document.createElement('div');
+    m.className = 'metrics';
+    m.innerHTML = '<b>' + report.fund.freq.toFixed(2) + '</b> Hz　·　MIDI '
+      + report.fund.midi.toFixed(3) + '　·　泛音序号 '
+      + report.partials.map(function (p) { return p.n; }).join(' : ')
+      + '　·　最大偏差 <b>' + report.maxCentsOff.toFixed(1) + '¢</b>（容差 '
+      + report.cents + '¢）';
+    head.appendChild(m);
+    box.appendChild(head);
+
+    if (!report.audible) {
+      var warn = document.createElement('div');
+      warn.className = 'status';
+      warn.style.marginTop = '8px';
+      warn.textContent = '⚠ 这个基音只有 ' + report.fund.freq.toFixed(2) + ' Hz，低于可听范围，'
+        + '泛音序号也大得没有音乐意义。容差太小时算法会一路降到亚音去凑整数倍'
+        + '（OM 的候选下界是 0.1 Hz），这是忠实的 OM 行为，但结果不能用。'
+        + '把容差调大，直到解回到可听音区。';
+      box.appendChild(warn);
+    }
+  }
+
+  function renderPartials(report) {
+    var box = $('partials');
+    box.innerHTML = '';
+    if (!report.ok) return;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    var table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>和弦音</th><th>频率 Hz</th><th>泛音序号 N</th>'
+      + '<th>N × f₀ Hz</th><th>偏差</th><th>相对容差</th></tr></thead>';
+    var tbody = document.createElement('tbody');
+    var tol = Math.max(report.cents, 1e-9);
+    report.partials.forEach(function (p) {
+      var tr = document.createElement('tr');
+      function cell(text, cls) {
+        var td = document.createElement('td');
+        if (cls) td.className = cls;
+        td.textContent = text;
+        return td;
+      }
+      tr.appendChild(cell(I.midiToLabel(p.midi)));
+      tr.appendChild(cell(p.freq.toFixed(2), 'num'));
+      tr.appendChild(cell(String(p.n)));
+      tr.appendChild(cell(p.idealFreq.toFixed(2), 'num'));
+      var off = Math.abs(p.centsOff) < 0.05 ? '精确'
+        : (p.centsOff > 0 ? '+' : '−') + Math.abs(p.centsOff).toFixed(1) + '¢';
+      tr.appendChild(cell(off, Math.abs(p.centsOff) > report.cents ? 'status' : ''));
+
+      var ratio = Math.min(1, Math.abs(p.centsOff) / tol);
+      var barTd = document.createElement('td');
+      var bar = document.createElement('span');
+      bar.className = 'bar' + (Math.abs(p.centsOff) > report.cents ? ' over' : '');
+      bar.style.width = (6 + ratio * 74).toFixed(0) + 'px';
+      barTd.appendChild(bar);
+      tr.appendChild(barTd);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    box.appendChild(wrap);
+  }
+
+  function renderStaff(report) {
+    var host = $('staff');
+    host.innerHTML = '';
+    lastStaffSVG = '';
+    if (!report.chord.length) {
+      host.innerHTML = '<div class="empty">（还没有选音）</div>';
+      return;
+    }
+    if (!report.ok) {
+      host.innerHTML = '<div class="empty">无解，没有可画的基音。</div>';
+      return;
+    }
+    if (!report.audible) {
+      host.innerHTML = '<div class="empty">虚基音只有 ' + report.fund.freq.toFixed(2)
+        + ' Hz（亚音），不画谱——加线会多到没有意义。请把容差调大。</div>';
+      return;
+    }
+    var series = V.harmonicSeries(report.fund.midi, state.series);
+    var columns = [
+      report.chord,
+      [report.fund.midi],
+      series.map(function (s) { return s.midi; })
+    ];
+    lastStaffSVG = I.renderStaffSVG(columns, { perSystem: 3, showCents: true });
+    host.innerHTML = lastStaffSVG;
+  }
+
+  function renderSweep() {
+    var host = $('sweep');
+    if (!state.chord.length) {
+      host.innerHTML = '<div class="empty">（还没有选音）</div>';
+      $('sweep-note').textContent = '';
+      return;
+    }
+    lastSweep = V.virtualFundSweep(state.chord, 0, state.scanTo, 1);
+    host.innerHTML = V.renderSweepSVG(lastSweep, { dark: isDark() });
+    var anySolved = lastSweep.filter(function (s) { return s.ok; }).length;
+    var firstAudible = lastSweep.filter(function (s) { return s.ok && s.audible; })[0];
+    var notes = [];
+    if (!anySolved) {
+      notes.push('整个 0–' + state.scanTo + '¢ 范围内都无解。');
+    } else {
+      if (firstAudible) {
+        notes.push('容差到 ' + Math.ceil(firstAudible.cents) + '¢ 左右，解才回到可听音区'
+          + '（' + firstAudible.freq.toFixed(1) + ' Hz）；此前解出的都是亚音，图上已隐藏。');
+      } else {
+        notes.push('这个范围内解出的基音全都低于 ' + V.MIN_AUDIBLE_HZ + ' Hz，图上已隐藏。');
+      }
+      notes.push('容差继续变大时答案会跳到别的音——曲线上的台阶就是这些跳变。');
+    }
+    $('sweep-note').textContent = notes.join('');
+  }
+
+  /* ---------- 播放 ---------- */
+
+  var actx = null, master = null, voices = [];
+
+  function audio() {
+    if (!actx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+      master = actx.createGain();
+      master.gain.value = state.vol;
+      master.connect(actx.destination);
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+
+  function stopAudio() {
+    voices.forEach(function (v) {
+      try { v.stop(); } catch (e) {}
+      try { v.disconnect(); } catch (e) {}
+    });
+    voices = [];
+  }
+
+  function tone(freq, start, dur, level) {
+    var o = actx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = freq;
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0, start);
+    g.gain.linearRampToValueAtTime(level, start + 0.02);
+    g.gain.setValueAtTime(level, start + Math.max(0.03, dur * 0.7));
+    g.gain.linearRampToValueAtTime(0, start + dur);
+    o.connect(g);
+    g.connect(master);
+    o.start(start);
+    o.stop(start + dur + 0.03);
+    voices.push(o, g);
+  }
+
+  var playingTimer = null;
+
+  function playTones(freqs, dur, level) {
+    audio();
+    stopAudio();
+    var t0 = actx.currentTime + 0.05;
+    var each = Math.max(0.06, level / Math.sqrt(freqs.length || 1));
+    freqs.forEach(function (f) { tone(f, t0, dur, each); });
+    $('audio-status').textContent = '播放中… ' + dur.toFixed(1) + ' s';
+    if (playingTimer) clearTimeout(playingTimer);
+    playingTimer = setTimeout(function () {
+      $('audio-status').textContent = '播放结束';
+      reportState({ playing: false });
+    }, dur * 1000 + 250);
+    reportState({ playing: true });
+  }
+
+  function currentFreqs() {
+    if (!lastReport || !lastReport.ok) return null;
+    return lastReport.partials.map(function (p) { return p.freq; });
+  }
+
+  function playFund() {
+    if (!lastReport || !lastReport.ok) return false;
+    playTones([lastReport.fund.freq], 1.4, 0.34);
+    return true;
+  }
+
+  function playInputChord() {
+    var freqs = currentFreqs();
+    if (!freqs) return false;
+    playTones(freqs, 1.6, 0.34);
+    return true;
+  }
+
+  function playSeries() {
+    if (!lastReport || !lastReport.ok) return false;
+    var series = V.harmonicSeries(lastReport.fund.midi, state.series);
+    playTones(series.map(function (s) { return I.midiToFreq(s.midi); }), 2.2, 0.3);
+    return true;
+  }
+
+  $('play-fund').addEventListener('click', playFund);
+  $('play-chord').addEventListener('click', playInputChord);
+  $('play-series').addEventListener('click', playSeries);
+  $('stop').addEventListener('click', function () {
+    stopAudio();
+    $('audio-status').textContent = '已停止';
+    reportState({ playing: false });
+  });
+
+  /* ---------- 导出 ---------- */
+
+  function download(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  function midiChords() {
+    var series = V.harmonicSeries(lastReport.fund.midi, state.series);
+    if (state.what === 'fund') return [[lastReport.fund.midi]];
+    if (state.what === 'series') return series.map(function (s) { return [s.midi]; });
+    return [lastReport.chord, [lastReport.fund.midi]];
+  }
+
+  $('export-midi').addEventListener('click', function () {
+    if (!lastReport || !lastReport.ok) {
+      $('export-status').textContent = '先把和弦解出虚基音再导出。';
+      return;
+    }
+    var chords = midiChords();
+    var bytes = I.buildMidiFile({
+      chords: chords,
+      stepMs: 700,
+      gate: 0.9,
+      bpm: 120,
+      program: 0,
+      trackName: 'Virtual fundamental ' + lastReport.fund.label,
+      microMode: state.micro,
+      bendRange: state.bendRange,
+      includeText: true
+    });
+    var name = 'virtualfund-' + state.what + '-' + state.micro + '.mid';
+    download(new Blob([bytes], { type: 'audio/midi' }), name);
+    var label = { bend: 'Pitch Bend', mts: 'MTS', plain: '12 平均律' }[state.micro] || state.micro;
+    $('export-status').textContent = '已导出 ' + name + '（' + label + ' + 音分文本）';
+  });
+
+  $('export-svg').addEventListener('click', function () {
+    if (!lastStaffSVG) {
+      $('export-status').textContent = '还没有可导出的五线谱。';
+      return;
+    }
+    download(new Blob([lastStaffSVG], { type: 'image/svg+xml' }), 'virtualfund-staff.svg');
+    $('export-status').textContent = '已导出五线谱 SVG';
+  });
+
+  /* ---------- 控件绑定 ---------- */
+
+  $('apply').addEventListener('click', function () {
+    try {
+      state.chord = V.normalizeChord(I.parseChordText($('chord-text').value));
+      render();
+    } catch (err) {
+      $('export-status').textContent = '输入有误：' + err.message;
+    }
+  });
+  $('chord-text').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') $('apply').click();
+  });
+  $('center-keys').addEventListener('click', centerKeyboard);
+  $('clear').addEventListener('click', function () {
+    state.chord = [];
+    syncText();
+    render();
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-example]'), function (b) {
+    b.addEventListener('click', function () {
+      state.chord = V.normalizeChord(I.parseChordText(this.getAttribute('data-example')));
+      syncText();
+      render();
+    });
+  });
+
+  $('cents').addEventListener('input', function () {
+    state.cents = +this.value;
+    $('cents-read').textContent = state.cents + '¢';
+    render();
+  });
+  $('series').addEventListener('change', function () {
+    state.series = Math.max(1, Math.min(24, parseInt(this.value, 10) || 12));
+    this.value = state.series;
+    render();
+  });
+  $('scan-to').addEventListener('change', function () {
+    state.scanTo = Math.max(10, Math.min(300, parseInt(this.value, 10) || 120));
+    this.value = state.scanTo;
+    renderSweep();
+  });
+  $('micro').addEventListener('change', function () { state.micro = this.value; });
+  $('what').addEventListener('change', function () { state.what = this.value; });
+  $('bend-range').addEventListener('change', function () { state.bendRange = +this.value; });
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+  }
+
+  syncText();
+  render();
+
+  /* ---------- 与「作曲工具」app 外壳的桥 ---------- */
+
+  function postBridge(payload) {
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge) {
+        window.webkit.messageHandlers.bridge.postMessage(payload);
+      }
+    } catch (e) {}
+  }
+
+  function reportState(extra) {
+    var info = {
+      tool: 'vf',
+      ok: !!(lastReport && lastReport.ok),
+      reason: lastReport ? lastReport.reason : '',
+      chordSize: lastReport ? lastReport.chord.length : 0,
+      cents: state.cents,
+      fundName: (lastReport && lastReport.ok) ? lastReport.fund.label : '',
+      fundFreq: (lastReport && lastReport.ok) ? lastReport.fund.freq : 0,
+      partials: (lastReport && lastReport.ok)
+        ? lastReport.partials.map(function (p) { return p.n; }).join(':') : '',
+      maxCentsOff: lastReport ? lastReport.maxCentsOff : 0,
+      audible: !!(lastReport && lastReport.audible),
+      playing: false
+    };
+    if (extra) {
+      for (var key in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, key)) info[key] = extra[key];
+      }
+    }
+    postBridge(info);
+  }
+
+  /* 悬浮条上的「播放」= 先响和弦、再响虚基音，把两者的关系演一遍 */
+  function playDemo() {
+    var freqs = currentFreqs();
+    if (!freqs || !lastReport.ok) return false;
+    audio();
+    stopAudio();
+    var t0 = actx.currentTime + 0.05;
+    var each = 0.30 / Math.sqrt(freqs.length || 1);
+    freqs.forEach(function (f) { tone(f, t0, 1.2, each); });
+    tone(lastReport.fund.freq, t0 + 1.3, 1.4, 0.34);
+    $('audio-status').textContent = '先和弦、后虚基音…';
+    if (playingTimer) clearTimeout(playingTimer);
+    playingTimer = setTimeout(function () {
+      $('audio-status').textContent = '播放结束';
+      reportState({ playing: false });
+    }, 2900);
+    reportState({ playing: true });
+    return true;
+  }
+
+  window.VirtualFundAPI = {
+    play: playDemo,
+    playFund: playFund,
+    playChord: playInputChord,
+    playSeries: playSeries,
+    stop: function () {
+      stopAudio();
+      $('audio-status').textContent = '已停止';
+      reportState({ playing: false });
+    },
+    exportMidi: function () { $('export-midi').click(); },
+    exportSvg: function () { $('export-svg').click(); },
+    report: function () { reportState(); }
+  };
+  setInterval(function () {
+    postBridge({
+      tool: 'vf',
+      heartbeat: Date.now(),
+      audioState: actx ? actx.state : 'none',
+      audioTime: actx ? actx.currentTime : 0
+    });
+  }, 1000);
+
+  /* 给自动化用的最小接口 */
+  window.VirtualFundDemo = {
+    state: state,
+    render: render,
+    analyze: function () { return lastReport; },
+    setChord: function (chord) { state.chord = V.normalizeChord(chord); syncText(); render(); },
+    centerKeyboard: centerKeyboard,
+    report: function () { reportState(); }
+  };
+  reportState();
+})();
+</script>
+</body>
+</html>

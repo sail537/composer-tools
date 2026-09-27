@@ -154,11 +154,20 @@ static BOOL POCFlag(NSString *name) {
 @property (nonatomic, strong) NSTableView *sidebarTable;
 @property (nonatomic, strong) WKWebView *webView;          // 环形调制
 @property (nonatomic, strong) WKWebView *interpWebView;    // 插值
-@property (nonatomic, assign) NSInteger activeTool;        // 0 = 环形调制, 1 = 插值
+@property (nonatomic, strong) WKWebView *vfWebView;        // 虚拟基音
+@property (nonatomic, strong) WKWebView *rhythmWebView;    // 节奏插值
+@property (nonatomic, assign) NSInteger activeTool;        // 0 环形调制 / 1 插值 / 2 虚拟基音 / 3 节奏插值
 @property (nonatomic, strong) NSDictionary *ringState;
 @property (nonatomic, strong) NSDictionary *interpState;
+@property (nonatomic, strong) NSDictionary *vfState;
+@property (nonatomic, strong) NSDictionary *rhythmState;
 @property (nonatomic, strong) NSView *placeholderView;
 @property (nonatomic, strong) NSViewController *contentViewController;
+/* 悬浮条重新量宽用：内容视图 / 行栈 / 玻璃外壳 */
+@property (nonatomic, strong) NSStackView *panelRow;
+@property (nonatomic, strong) NSView *panelContent;
+@property (nonatomic, strong) NSView *panelMaterial;
+@property (nonatomic, assign) BOOL buildingTransportPanel;
 
 /* 独立悬浮面板 */
 @property (nonatomic, strong) NSPanel *transportPanel;
@@ -246,6 +255,14 @@ static BOOL POCFlag(NSString *name) {
     toolbar.allowsUserCustomization = YES;
     self.window.toolbar = toolbar;
 
+    if (POCFlag(@"poc-dark")) {
+        NSAppearance *dark = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        self.window.appearance = dark;
+        if (self.webView) { self.webView.appearance = dark; }
+        if (self.interpWebView) { self.interpWebView.appearance = dark; }
+        PoCLog(@"forced dark appearance");
+    }
+
     [self.window makeKeyAndOrderFront:nil];
     [self loadPage];
 }
@@ -262,7 +279,18 @@ static BOOL POCFlag(NSString *name) {
     table.delegate = self;
     table.allowsEmptySelection = NO;
     self.sidebarTable = table;
-    [table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+    /* 启动时默认打开第一个工具；在 /tmp 建 poc-start-tool-N（N = 0…3）可指定 */
+    NSInteger startTool = 0;
+    for (NSInteger candidate = 0; candidate <= 3; candidate++) {
+        if (POCFlag([NSString stringWithFormat:@"poc-start-tool-%ld", (long)candidate])) {
+            startTool = candidate;
+            break;
+        }
+    }
+    [table selectRowIndexes:[NSIndexSet indexSetWithIndex:startTool] byExtendingSelection:NO];
+    PoCLog(@"sidebar built startTool=%ld rows=%ld selected=%ld dataSource=%d delegate=%d",
+           (long)startTool, (long)table.numberOfRows, (long)table.selectedRow,
+           table.dataSource != nil, table.delegate != nil);
 
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
     scroll.documentView = table;
@@ -321,8 +349,24 @@ static BOOL POCFlag(NSString *name) {
             [root addSubview:self.interpWebView];
         }
 
+        if (!POCFlag(@"poc-no-vf")) {
+            self.vfWebView = [self makeWebViewWithFrame:root.bounds];
+            self.vfWebView.translatesAutoresizingMaskIntoConstraints = NO;
+            self.vfWebView.hidden = YES;
+            [root addSubview:self.vfWebView];
+        }
+
+        if (!POCFlag(@"poc-no-rhythm")) {
+            self.rhythmWebView = [self makeWebViewWithFrame:root.bounds];
+            self.rhythmWebView.translatesAutoresizingMaskIntoConstraints = NO;
+            self.rhythmWebView.hidden = YES;
+            [root addSubview:self.rhythmWebView];
+        }
+
         NSMutableArray<NSView *> *webs = [NSMutableArray arrayWithObject:self.webView];
         if (self.interpWebView) { [webs addObject:self.interpWebView]; }
+        if (self.vfWebView) { [webs addObject:self.vfWebView]; }
+        if (self.rhythmWebView) { [webs addObject:self.rhythmWebView]; }
         for (NSView *web in webs) {
             [constraints addObjectsFromArray:@[
                 [web.leadingAnchor constraintEqualToAnchor:root.safeAreaLayoutGuide.leadingAnchor constant:10.0],
@@ -331,7 +375,9 @@ static BOOL POCFlag(NSString *name) {
                 [web.bottomAnchor constraintEqualToAnchor:root.safeAreaLayoutGuide.bottomAnchor constant:-10.0]
             ]];
         }
-        PoCLog(@"content: two web views created");
+        PoCLog(@"content: web views created");
+        /* 侧边栏早期选中的工具要在这里补一次可见性（见 applyToolVisibility 注释） */
+        [self applyToolVisibility];
     } else {
         PoCLog(@"content: web view disabled");
     }
@@ -415,6 +461,7 @@ static BOOL POCFlag(NSString *name) {
 }
 
 - (NSView *)makeTransportContent {
+    self.buildingTransportPanel = YES;
     self.curveView = nil;
     NSArray<NSButton *> *toolButtons;
     if (self.activeTool == 1) {
@@ -423,6 +470,20 @@ static BOOL POCFlag(NSString *name) {
             [self iconButton:@"stop.fill" action:@selector(stopInterp:) tooltip:@"停止"],
             [self iconButton:@"square.and.arrow.up" action:@selector(exportInterpMidi:) tooltip:@"导出 MIDI"],
             [self iconButton:@"doc.richtext" action:@selector(exportInterpSvg:) tooltip:@"导出五线谱 SVG"]
+        ];
+    } else if (self.activeTool == 2) {
+        toolButtons = @[
+            [self barButton:@"播放" symbol:@"play.fill" action:@selector(playVf:)],
+            [self iconButton:@"stop.fill" action:@selector(stopVf:) tooltip:@"停止"],
+            [self iconButton:@"square.and.arrow.up" action:@selector(exportVfMidi:) tooltip:@"导出 MIDI"],
+            [self iconButton:@"doc.richtext" action:@selector(exportVfSvg:) tooltip:@"导出五线谱 SVG"]
+        ];
+    } else if (self.activeTool == 3) {
+        toolButtons = @[
+            [self barButton:@"播放" symbol:@"play.fill" action:@selector(playRhythm:)],
+            [self iconButton:@"stop.fill" action:@selector(stopRhythm:) tooltip:@"停止"],
+            [self iconButton:@"square.and.arrow.up" action:@selector(exportRhythmMidi:) tooltip:@"导出 MIDI"],
+            [self iconButton:@"doc.richtext" action:@selector(exportRhythmSvg:) tooltip:@"导出五线谱 SVG"]
         ];
     } else {
         toolButtons = @[
@@ -480,7 +541,7 @@ static BOOL POCFlag(NSString *name) {
     NSMutableArray *rowViews = [NSMutableArray arrayWithArray:toolButtons];
     [rowViews addObject:divider1];
     [rowViews addObject:labels];
-    if (self.activeTool == 1) {
+    if (self.activeTool == 1 || self.activeTool == 3) {
         self.curveView = [[CurveDiagramView alloc] initWithFrame:NSMakeRect(0, 0, 104, 40)];
         self.curveView.translatesAutoresizingMaskIntoConstraints = NO;
         [self.curveView.widthAnchor constraintEqualToConstant:104.0].active = YES;
@@ -492,6 +553,9 @@ static BOOL POCFlag(NSString *name) {
     row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     row.alignment = NSLayoutAttributeCenterY;
     row.spacing = 12.0;
+    /* 先把读数填进去再量宽度：否则面板是按占位文本的宽度算的，
+       真实读数一进来就被省略号截断（三个工具都会中招）。 */
+    [self updatePanelReadout];
     [row layoutSubtreeIfNeeded];
 
     NSSize fit = row.fittingSize;
@@ -504,7 +568,9 @@ static BOOL POCFlag(NSString *name) {
                            ceil(fit.width), ceil(fit.height));
     row.autoresizingMask = NSViewMinYMargin | NSViewMaxYMargin;
     [content addSubview:row];
-    [self updatePanelReadout];
+    self.panelRow = row;
+    self.panelContent = content;
+    self.buildingTransportPanel = NO;
     PoCLog(@"transport content tool=%ld glass=%d curveView=%d",
            (long)self.activeTool, self.useGlassMaterial, self.curveView != nil);
     return content;
@@ -558,6 +624,7 @@ static BOOL POCFlag(NSString *name) {
         content = [self makeTransportContent];
         material = POCFlag(@"poc-panel-plain") ? content : [self wrapTransportContent:content];
     }
+    self.panelMaterial = material;
     NSRect frame = NSMakeRect(0, 0, material.frame.size.width, material.frame.size.height);
 
     NSPanel *panel = [[NSPanel alloc] initWithContentRect:frame
@@ -732,13 +799,35 @@ static BOOL POCFlag(NSString *name) {
             [self.interpWebView loadFileURL:url allowingReadAccessToURL:[url URLByDeletingLastPathComponent]];
         }
     }
-    if (!self.webView && !self.interpWebView) {
+    if (self.vfWebView) {
+        NSURL *url = [self urlForRelativePath:@"Documents/ChatGPT/论文paper/tools/virtualfund-demo.html"
+                                   bundleName:@"virtualfund-demo"];
+        if (url) {
+            PoCLog(@"loadPage vf %@", url.path);
+            [self.vfWebView loadFileURL:url allowingReadAccessToURL:[url URLByDeletingLastPathComponent]];
+        }
+    }
+    if (self.rhythmWebView) {
+        NSURL *url = [self urlForRelativePath:@"Documents/ChatGPT/论文paper/tools/rhythm-interp-demo.html"
+                                   bundleName:@"rhythm-interp-demo"];
+        if (url) {
+            PoCLog(@"loadPage rhythm %@", url.path);
+            [self.rhythmWebView loadFileURL:url allowingReadAccessToURL:[url URLByDeletingLastPathComponent]];
+        }
+    }
+    if (!self.webView && !self.interpWebView && !self.vfWebView && !self.rhythmWebView) {
         PoCLog(@"loadPage skipped (no web view)");
     }
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    if (webView == self.interpWebView) {
+    if (webView == self.rhythmWebView) {
+        PoCLog(@"didFinishNavigation rhythm");
+        [self injectRhythmStyle];
+    } else if (webView == self.vfWebView) {
+        PoCLog(@"didFinishNavigation vf");
+        [self injectVfStyle];
+    } else if (webView == self.interpWebView) {
         PoCLog(@"didFinishNavigation interp");
         [self injectInterpStyle];
     } else {
@@ -837,8 +926,6 @@ static BOOL POCFlag(NSString *name) {
          "  border: 1px solid rgba(255,255,255,0.62) !important;"
          "  box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 10px 30px rgba(0,0,0,0.06) !important; }"
          "@media (prefers-color-scheme: dark) {"
-         "  :root { --ink:#f2f2f7; --muted:#a1a1aa; --line:rgba(255,255,255,0.16); --accent-soft:rgba(10,108,255,0.28); }"
-         "  body { color: var(--ink); }"
          "  .card { background: rgba(28,28,32,0.55) !important; } }";
 }
 
@@ -891,6 +978,10 @@ static BOOL POCFlag(NSString *name) {
     [self.webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
         PoCLog(@"injectRingmodBridge done error=%@", error);
     }];
+    if (POCFlag(@"poc-debug-styles")) {
+        NSString *debug = @"(function(){var ids=['c-group','c-note','m-group','m-note','export-svg','export-png','edo'];var o={};ids.forEach(function(id){var el=document.getElementById(id);if(el){var cs=getComputedStyle(el);o[id]=cs.backgroundColor+' | '+cs.color;}});try{window.webkit.messageHandlers.bridge.postMessage({tool:'ringmod',styles:o});}catch(e){}})();";
+        [self.webView evaluateJavaScript:debug completionHandler:nil];
+    }
 }
 
 - (void)injectInterpStyle {
@@ -909,12 +1000,57 @@ static BOOL POCFlag(NSString *name) {
     [self.interpWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
         PoCLog(@"injectInterpStyle done error=%@", error);
     }];
+    if (POCFlag(@"poc-debug-styles")) {
+        NSString *debug = @"(function(){var ids=['a-text','b-text','export-midi','export-svg','domain'];var o={};ids.forEach(function(id){var el=document.getElementById(id);if(el){var cs=getComputedStyle(el);o[id]=cs.backgroundColor+' | '+cs.color;}});try{window.webkit.messageHandlers.bridge.postMessage({tool:'interp',styles:o});}catch(e){}})();";
+        [self.interpWebView evaluateJavaScript:debug completionHandler:nil];
+    }
+}
+
+- (void)injectVfStyle {
+    if (!self.vfWebView) { return; }
+    NSString *js = [NSString stringWithFormat:
+        @"(function () {"
+         "  if (window.__composerPocStyle) { return; }"
+         "  window.__composerPocStyle = true;"
+         "  window.addEventListener('error', function (e) {"
+         "    try { window.webkit.messageHandlers.bridge.postMessage({ tool: 'vf', jsError: String(e.message || e) }); } catch (err) {}"
+         "  });"
+         "  const style = document.createElement('style');"
+         "  style.textContent = %@;"
+         "  document.head.appendChild(style);"
+         "})();", [self jsString:[self shellCSS]]];
+    [self.vfWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+        PoCLog(@"injectVfStyle done error=%@", error);
+    }];
+}
+
+- (void)injectRhythmStyle {
+    if (!self.rhythmWebView) { return; }
+    NSString *js = [NSString stringWithFormat:
+        @"(function () {"
+         "  if (window.__composerPocStyle) { return; }"
+         "  window.__composerPocStyle = true;"
+         "  window.addEventListener('error', function (e) {"
+         "    try { window.webkit.messageHandlers.bridge.postMessage({ tool: 'rhythm', jsError: String(e.message || e) }); } catch (err) {}"
+         "  });"
+         "  const style = document.createElement('style');"
+         "  style.textContent = %@;"
+         "  document.head.appendChild(style);"
+         "})();", [self jsString:[self shellCSS]]];
+    [self.rhythmWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+        PoCLog(@"injectRhythmStyle done error=%@", error);
+    }];
 }
 
 - (void)handleBridgeMessage:(id)body {
     if (![body isKindOfClass:[NSDictionary class]]) { return; }
     NSDictionary *dict = (NSDictionary *)body;
     NSString *tool = [dict[@"tool"] isKindOfClass:[NSString class]] ? dict[@"tool"] : @"ringmod";
+
+    if (dict[@"styles"]) {
+        PoCLog(@"computed styles[%@]: %@", tool, dict[@"styles"]);
+        return;
+    }
 
     if (dict[@"heartbeat"]) {
         self.heartbeatCount++;
@@ -942,6 +1078,36 @@ static BOOL POCFlag(NSString *name) {
         return;
     }
 
+    if ([tool isEqualToString:@"vf"]) {
+        self.vfState = dict;
+        if (dict[@"jsError"]) {
+            PoCLog(@"vf JS error: %@", dict[@"jsError"]);
+            return;
+        }
+        static NSInteger vfCount = 0;
+        if (vfCount++ < 8) {
+            PoCLog(@"bridge vf #%ld chord=%@ fund=%@ partials=%@",
+                   (long)vfCount, dict[@"chordSize"], dict[@"fundName"], dict[@"partials"]);
+        }
+        [self updatePanelReadout];
+        return;
+    }
+
+    if ([tool isEqualToString:@"rhythm"]) {
+        self.rhythmState = dict;
+        if (dict[@"jsError"]) {
+            PoCLog(@"rhythm JS error: %@", dict[@"jsError"]);
+            return;
+        }
+        static NSInteger rhythmCount = 0;
+        if (rhythmCount++ < 8) {
+            PoCLog(@"bridge rhythm #%ld steps=%@ strategy=%@ meter=%@",
+                   (long)rhythmCount, dict[@"steps"], dict[@"strategy"], dict[@"meter"]);
+        }
+        [self updatePanelReadout];
+        return;
+    }
+
     self.ringState = dict;
     static NSInteger bridgeCount = 0;
     if (bridgeCount++ < 8) {
@@ -952,7 +1118,39 @@ static BOOL POCFlag(NSString *name) {
     [self updatePanelReadout];
 }
 
+/* 读数变化后要把悬浮条重新量宽：面板是按建面板那一刻的文本宽度算出来的，
+   而读数往往在页面加载完之后才到（尤其虚拟基音），不重量就会被省略号截断。 */
+- (void)relayoutTransportPanel {
+    if (!self.transportPanel || !self.panelRow || !self.panelContent) { return; }
+    NSStackView *row = self.panelRow;
+    [row layoutSubtreeIfNeeded];
+    NSSize fit = row.fittingSize;
+    CGFloat contentWidth = ceil(fit.width) + 32.0;
+    CGFloat contentHeight = 64.0;
+
+    self.panelContent.frame = NSMakeRect(0, 0, contentWidth, contentHeight);
+    row.frame = NSMakeRect(16.0, floor((contentHeight - fit.height) / 2.0),
+                           ceil(fit.width), ceil(fit.height));
+    if (self.panelMaterial) {
+        self.panelMaterial.frame = NSMakeRect(0, 0, contentWidth, contentHeight);
+    }
+
+    NSRect oldFrame = self.transportPanel.frame;
+    NSRect newFrame = oldFrame;
+    newFrame.size = NSMakeSize(contentWidth, contentHeight);
+    newFrame.origin.y = NSMaxY(oldFrame) - newFrame.size.height;   /* 上边缘不动 */
+    if (NSEqualRects(oldFrame, newFrame)) { return; }
+    [self.transportPanel setFrame:newFrame display:YES];
+    PoCLog(@"panel resized %.0fx%.0f -> %.0fx%.0f",
+           oldFrame.size.width, oldFrame.size.height, newFrame.size.width, newFrame.size.height);
+}
+
 - (void)updatePanelReadout {
+    [self updatePanelReadoutText];
+    if (!self.buildingTransportPanel) { [self relayoutTransportPanel]; }
+}
+
+- (void)updatePanelReadoutText {
     if (!self.readoutLabel) { return; }
 
     if (self.activeTool == 1) {
@@ -977,6 +1175,58 @@ static BOOL POCFlag(NSString *name) {
         self.readoutLabel2.stringValue = [NSString stringWithFormat:@"%@ · curve %.2f%@",
                                           [domain isEqualToString:@"freq"] ? @"频率域" : @"MIDI 域",
                                           curve, stepText];
+        self.statusLabel.stringValue = playing ? @"播放中" : @"就绪";
+        return;
+    }
+
+    if (self.activeTool == 2) {
+        NSDictionary *s = self.vfState ?: @{};
+        NSString *fundName = [s[@"fundName"] isKindOfClass:[NSString class]] ? s[@"fundName"] : @"";
+        NSString *partials = [s[@"partials"] isKindOfClass:[NSString class]] ? s[@"partials"] : @"";
+        NSString *reason = [s[@"reason"] isKindOfClass:[NSString class]] ? s[@"reason"] : @"";
+        double fundFreq = [s[@"fundFreq"] doubleValue];
+        double cents = [s[@"cents"] doubleValue];
+        double maxOff = [s[@"maxCentsOff"] doubleValue];
+        BOOL ok = [s[@"ok"] boolValue];
+        BOOL audible = [s[@"audible"] boolValue];
+        BOOL playing = [s[@"playing"] boolValue];
+
+        if (!ok) {
+            NSString *why = @"无解";
+            if ([reason isEqualToString:@"empty"]) { why = @"还没有选音"; }
+            else if ([reason isEqualToString:@"budget"]) { why = @"搜索超出预算"; }
+            self.readoutLabel.stringValue = [NSString stringWithFormat:@"%@ · 容差 %.0f¢", why, cents];
+            self.readoutLabel2.stringValue = [reason isEqualToString:@"no-solution"]
+                ? @"这个容差下不存在整数倍泛音基音，把容差调大试试" : @"";
+            self.statusLabel.stringValue = playing ? @"播放中" : @"就绪";
+            return;
+        }
+
+        self.readoutLabel.stringValue = [NSString stringWithFormat:@"虚基音 %@ · %.2f Hz",
+                                         fundName, fundFreq];
+        self.readoutLabel2.stringValue = [NSString stringWithFormat:@"泛音 %@ · 最大偏差 %.1f¢（容差 %.0f¢）%@",
+                                          partials, maxOff, cents, audible ? @"" : @" · ⚠ 亚音"];
+        self.statusLabel.stringValue = playing ? @"播放中" : (audible ? @"就绪" : @"亚音，无音乐意义");
+        return;
+    }
+
+    if (self.activeTool == 3) {
+        NSDictionary *s = self.rhythmState ?: @{};
+        NSInteger steps = [s[@"steps"] integerValue];
+        NSInteger samples = [s[@"samples"] integerValue];
+        NSString *strategy = [s[@"strategy"] isKindOfClass:[NSString class]] ? s[@"strategy"] : @"dx";
+        NSString *meter = [s[@"meter"] isKindOfClass:[NSString class]] ? s[@"meter"] : @"4/4";
+        NSString *engine = [s[@"engine"] isKindOfClass:[NSString class]] ? s[@"engine"] : @"global";
+        double curve = [s[@"curve"] doubleValue];
+        BOOL playing = [s[@"playing"] boolValue];
+        if (self.curveView) { self.curveView.curve = curve; }
+        self.readoutLabel.stringValue = [NSString stringWithFormat:@"%ld 个中间状态 · %ld 步 · %@",
+                                         (long)steps, (long)samples,
+                                         [meter stringByAppendingString:@" 拍"]];
+        self.readoutLabel2.stringValue = [NSString stringWithFormat:@"%@ · curve %.2f · %@",
+                                          [strategy isEqualToString:@"dx"] ? @"逐项时值" : @"时间弯曲",
+                                          curve,
+                                          [engine isEqualToString:@"global"] ? @"全局量化" : @"等值连音扫描"];
         self.statusLabel.stringValue = playing ? @"播放中" : @"就绪";
         return;
     }
@@ -1026,7 +1276,11 @@ static BOOL POCFlag(NSString *name) {
 - (void)playSumDiff:(id)sender { [self evalJS:@"play('sumdiff')"]; }
 - (void)stopAudio:(id)sender { [self evalJS:@"killLive()"]; }
 - (void)reloadPage:(id)sender {
-    if (self.activeTool == 1) {
+    if (self.activeTool == 3) {
+        [self.rhythmWebView reload];
+    } else if (self.activeTool == 2) {
+        [self.vfWebView reload];
+    } else if (self.activeTool == 1) {
         [self.interpWebView reload];
     } else {
         [self.webView reload];
@@ -1042,19 +1296,52 @@ static BOOL POCFlag(NSString *name) {
     }];
 }
 
+- (void)evalVfJS:(NSString *)js {
+    PoCLog(@"evalVfJS %@", js);
+    [self.vfWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+        if (error) { NSLog(@"PoC vf JS error: %@", error); }
+    }];
+}
+
+- (void)playVf:(id)sender { [self evalVfJS:@"window.VirtualFundAPI && window.VirtualFundAPI.play()"]; }
+- (void)stopVf:(id)sender { [self evalVfJS:@"window.VirtualFundAPI && window.VirtualFundAPI.stop()"]; }
+- (void)exportVfMidi:(id)sender { [self evalVfJS:@"window.VirtualFundAPI && window.VirtualFundAPI.exportMidi()"]; }
+- (void)exportVfSvg:(id)sender { [self evalVfJS:@"window.VirtualFundAPI && window.VirtualFundAPI.exportSvg()"]; }
+
+- (void)evalRhythmJS:(NSString *)js {
+    PoCLog(@"evalRhythmJS %@", js);
+    [self.rhythmWebView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+        if (error) { NSLog(@"PoC rhythm JS error: %@", error); }
+    }];
+}
+
+- (void)playRhythm:(id)sender { [self evalRhythmJS:@"window.RhythmAPI && window.RhythmAPI.play()"]; }
+- (void)stopRhythm:(id)sender { [self evalRhythmJS:@"window.RhythmAPI && window.RhythmAPI.stop()"]; }
+- (void)exportRhythmMidi:(id)sender { [self evalRhythmJS:@"window.RhythmAPI && window.RhythmAPI.exportMidi()"]; }
+- (void)exportRhythmSvg:(id)sender { [self evalRhythmJS:@"window.RhythmAPI && window.RhythmAPI.exportSvg()"]; }
+
 - (void)playInterp:(id)sender { [self evalInterpJS:@"window.InterpAPI && window.InterpAPI.play()"]; }
 - (void)stopInterp:(id)sender { [self evalInterpJS:@"window.InterpAPI && window.InterpAPI.stop()"]; }
 - (void)exportInterpMidi:(id)sender { [self evalInterpJS:@"window.InterpAPI && window.InterpAPI.exportMidi()"]; }
 - (void)exportInterpSvg:(id)sender { [self evalInterpJS:@"window.InterpAPI && window.InterpAPI.exportSvg()"]; }
 
 - (void)playCurrentTool:(id)sender {
-    if (self.activeTool == 1) { [self playInterp:sender]; } else { [self playRing:sender]; }
+    if (self.activeTool == 3) { [self playRhythm:sender]; }
+    else if (self.activeTool == 2) { [self playVf:sender]; }
+    else if (self.activeTool == 1) { [self playInterp:sender]; }
+    else { [self playRing:sender]; }
 }
 - (void)stopCurrentTool:(id)sender {
-    if (self.activeTool == 1) { [self stopInterp:sender]; } else { [self stopAudio:sender]; }
+    if (self.activeTool == 3) { [self stopRhythm:sender]; }
+    else if (self.activeTool == 2) { [self stopVf:sender]; }
+    else if (self.activeTool == 1) { [self stopInterp:sender]; }
+    else { [self stopAudio:sender]; }
 }
 - (void)exportCurrentTool:(id)sender {
-    if (self.activeTool == 1) { [self exportInterpMidi:sender]; } else { [self exportSvg:sender]; }
+    if (self.activeTool == 3) { [self exportRhythmMidi:sender]; }
+    else if (self.activeTool == 2) { [self exportVfMidi:sender]; }
+    else if (self.activeTool == 1) { [self exportInterpMidi:sender]; }
+    else { [self exportSvg:sender]; }
 }
 
 #pragma mark 工具栏
@@ -1111,7 +1398,7 @@ static BOOL POCFlag(NSString *name) {
 
 #pragma mark 侧边栏
 
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView { return 2; }
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView { return 4; }
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
     NSTableCellView *cell = [tableView makeViewWithIdentifier:@"cell" owner:self];
@@ -1141,9 +1428,11 @@ static BOOL POCFlag(NSString *name) {
             [text.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor]
         ]];
     }
-    BOOL isRing = (row == 0);
-    cell.textField.stringValue = isRing ? @"环形调制" : @"插值";
-    cell.imageView.image = [NSImage imageWithSystemSymbolName:(isRing ? @"waveform.path" : @"chart.xyaxis.line")
+    NSArray<NSString *> *titles = @[@"环形调制", @"插值", @"虚拟基音", @"节奏插值"];
+    NSArray<NSString *> *symbols = @[@"waveform.path", @"chart.xyaxis.line", @"tuningfork", @"metronome"];
+    NSInteger index = (row >= 0 && row < (NSInteger)titles.count) ? row : 0;
+    cell.textField.stringValue = titles[index];
+    cell.imageView.image = [NSImage imageWithSystemSymbolName:symbols[index]
                                       accessibilityDescription:nil];
     return cell;
 }
@@ -1151,27 +1440,54 @@ static BOOL POCFlag(NSString *name) {
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
     NSInteger row = self.sidebarTable.selectedRow;
     if (row < 0) { return; }
+    [self activateToolRow:row];
+}
+
+/* 菜单「工具」与侧边栏共用同一条切换路径 */
+- (void)selectToolMenu:(NSMenuItem *)sender {
+    NSInteger index = [sender.menu.itemArray indexOfObject:sender];
+    if (index < 0 || index > 3) { return; }
+    /* 只改选中项：真正的切换由 tableViewSelectionDidChange 统一处理 */
+    [self.sidebarTable selectRowIndexes:[NSIndexSet indexSetWithIndex:index]
+                   byExtendingSelection:NO];
+}
+
+- (void)activateToolRow:(NSInteger)row {
     NSInteger previousTool = self.activeTool;
     self.selectedRow = row;
-    self.activeTool = (row == 0) ? 0 : 1;
+    self.activeTool = (row >= 0 && row <= 3) ? row : 0;
     if (previousTool != self.activeTool) {
-        /* 切换工具时停掉另一个工具的声音，避免两路同时播放 */
-        if (self.activeTool == 0) {
-            [self evalInterpJS:@"window.InterpAPI && window.InterpAPI.stop()"];
-        } else {
-            [self evalJS:@"killLive()"];
-        }
+        /* 切换工具时停掉其它工具的声音，避免两路同时播放 */
+        if (self.activeTool != 0) { [self evalJS:@"killLive()"]; }
+        if (self.activeTool != 1) { [self evalInterpJS:@"window.InterpAPI && window.InterpAPI.stop()"]; }
+        if (self.activeTool != 2) { [self evalVfJS:@"window.VirtualFundAPI && window.VirtualFundAPI.stop()"]; }
+        if (self.activeTool != 3) { [self evalRhythmJS:@"window.RhythmAPI && window.RhythmAPI.stop()"]; }
     }
-    BOOL isRing = (self.activeTool == 0);
-    self.webView.hidden = !isRing;
-    self.interpWebView.hidden = isRing;
-    self.placeholderView.hidden = YES;
-    self.window.title = isRing ? @"环形调制" : @"插值";
+    [self applyToolVisibility];
     if (self.launchComplete) {
         [self rebuildTransportPanel];
         [self updatePanelReadout];
     }
     PoCLog(@"tool switched to %ld", (long)self.activeTool);
+}
+
+/* 让三个 web view 的可见性跟上 activeTool。
+   注意：侧边栏的初始选中发生在 web view 创建【之前】，那时这些属性还是 nil，
+   给 nil 赋 hidden 是空操作；所以创建完 web view 之后必须再调一次这个方法，
+   否则「启动即打开非第一个工具」时旧页面会盖在上面。 */
+- (void)applyToolVisibility {
+    self.webView.hidden = (self.activeTool != 0);
+    self.interpWebView.hidden = (self.activeTool != 1);
+    self.vfWebView.hidden = (self.activeTool != 2);
+    self.rhythmWebView.hidden = (self.activeTool != 3);
+    self.placeholderView.hidden = YES;
+    NSArray<NSString *> *toolTitles = @[@"环形调制", @"插值", @"虚拟基音", @"节奏插值"];
+    if (self.activeTool >= 0 && self.activeTool <= 3) {
+        self.window.title = toolTitles[self.activeTool];
+    }
+    PoCLog(@"tool visibility ring=%d interp=%d vf=%d rhythm=%d",
+           !self.webView.hidden, !self.interpWebView.hidden,
+           !self.vfWebView.hidden, !self.rhythmWebView.hidden);
 }
 
 #pragma mark 菜单
@@ -1224,6 +1540,16 @@ static BOOL POCFlag(NSString *name) {
     [mainMenu addItem:viewItem];
     NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"显示"];
     viewItem.submenu = viewMenu;
+
+    NSMenuItem *toolItem = [[NSMenuItem alloc] init];
+    [mainMenu addItem:toolItem];
+    NSMenu *toolMenu = [[NSMenu alloc] initWithTitle:@"工具"];
+    toolItem.submenu = toolMenu;
+    [self addItem:@"环形调制" action:@selector(selectToolMenu:) key:@"1" target:self to:toolMenu];
+    [self addItem:@"插值" action:@selector(selectToolMenu:) key:@"2" target:self to:toolMenu];
+    [self addItem:@"虚拟基音" action:@selector(selectToolMenu:) key:@"3" target:self to:toolMenu];
+    [self addItem:@"节奏插值" action:@selector(selectToolMenu:) key:@"4" target:self to:toolMenu];
+
     NSMenuItem *toggle = [viewMenu addItemWithTitle:@"显示 / 隐藏侧边栏"
                                              action:@selector(toggleSidebar:) keyEquivalent:@"s"];
     toggle.target = self.splitViewController;

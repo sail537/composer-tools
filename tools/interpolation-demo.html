@@ -6,6 +6,7 @@
 <title>插值计算器</title>
 <style>
   :root {
+    color-scheme: light dark;
     --ink: #1c1c1e;
     --muted: #6b6b70;
     --line: #d9d9de;
@@ -104,6 +105,42 @@
   .num { color: var(--muted); }
   .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
   .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+
+  /* ---------- 深色模式 ---------- */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f2f2f7;
+      --muted: #a1a1aa;
+      --line: rgba(255, 255, 255, 0.16);
+      --bg: #1c1c1e;
+      --accent-soft: rgba(10, 108, 255, 0.28);
+      --warn: #ffb340;
+    }
+    body { background: var(--bg); color: var(--ink); }
+    .card { background: #2c2c2e; border-color: var(--line); }
+    input[type=number], input[type=text], select, button {
+      background: #2c2c2e; color: var(--ink); border-color: var(--line);
+    }
+    select option { background: #2c2c2e; color: var(--ink); }
+    input::placeholder { color: #8e8e93; }
+    button:hover { border-color: #48484a; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover { background: #0a5ede; }
+    .chord-box { border-color: var(--line); }
+    .chip { background: #3a3a3c; }
+    .chord-box.a .chip { background: var(--accent-soft); }
+    .chord-box.b .chip { background: #4a342a; }
+    .seg button { background: #2c2c2e; color: var(--ink); }
+    .seg button.on { background: var(--accent); color: #fff; }
+    .table-wrap { border-color: rgba(255, 255, 255, 0.12); }
+    th { background: #2c2c2e; }
+    th, td { border-bottom-color: rgba(255, 255, 255, 0.10); }
+    .key.white { background: #e5e5ea; color: #3a3a3e; border-color: #8e8e93; }
+    .key.white:hover { background: #d1d1d6; }
+    .key.black { background: #1c1c1e; color: #d7d7dd; border-color: #000; }
+    .key.black:hover { background: #2c2c2e; }
+    input[type=range] { accent-color: var(--accent); }
+  }
 </style>
 </head>
 <body>

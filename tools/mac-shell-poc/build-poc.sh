@@ -21,6 +21,12 @@ cp "$DIR/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$TOOLS/ringmod-demo.html" "$APP/Contents/Resources/ringmod-demo.html"
 cp "$TOOLS/interpolation-demo.html" "$APP/Contents/Resources/interpolation-demo.html"
 cp "$TOOLS/interpolation-core.js" "$APP/Contents/Resources/interpolation-core.js"
+cp "$TOOLS/virtualfund-demo.html" "$APP/Contents/Resources/virtualfund-demo.html"
+cp "$TOOLS/virtualfund-core.js" "$APP/Contents/Resources/virtualfund-core.js"
+cp "$TOOLS/rhythm-interp-demo.html" "$APP/Contents/Resources/rhythm-interp-demo.html"
+cp "$TOOLS/rhythm-interp-core.js" "$APP/Contents/Resources/rhythm-interp-core.js"
+mkdir -p "$APP/Contents/Resources/vendor"
+cp -R "$TOOLS/vendor/abcjs" "$APP/Contents/Resources/vendor/abcjs"
 cp "$DIR/README.md" "$APP/Contents/Resources/README.md"
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true
 
