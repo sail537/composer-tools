@@ -14,8 +14,11 @@
 
 # 作曲工具 / Composer Tools
 
-一组面向频谱作曲与算法作曲的小工具：两个网页计算器，加一个原生 macOS 外壳
-（AppKit + WKWebView + 真 Liquid Glass）。
+**当前版本 0.2**（四个工具）· 面向频谱作曲与算法作曲的小工具集：
+四个网页计算器，加一个原生 macOS 外壳（AppKit + WKWebView + 真 Liquid Glass）。
+
+版本说明：0.x 阶段工具数量与算法覆盖还在长；**1.0 的判据**见下面的「路线图」——
+大致是把 OMTristan / Esquisse 里频谱音乐创作最常用的那批算法做到可用。
 
 ## 包含什么
 
@@ -23,8 +26,44 @@
 |---|---|---|
 | 环形调制计算器 | `tools/ringmod-demo.html` | 单文件网页：载音/调制音输入、和音差音、频率轴图示、试听、SVG/PNG 导出 |
 | 插值计算器 | `tools/interpolation-demo.html` + `tools/interpolation-core.js` | 网页：与 OM 同构的插值、88 键输入、五线谱、曲线预览、MIDI 导出（含微分音） |
-| 作曲工具（原生外壳） | `tools/mac-shell-poc/` | AppKit + WKWebView：侧边栏、独立置顶悬浮面板、真 Liquid Glass、双工具切换 |
+| 虚拟基音计算器 | `tools/virtualfund-demo.html` + `tools/virtualfund-core.js` | 网页：移植 OM 的 `tolerant-gcd` / `virtual-fund`，虚基音、泛音序号对照表、精度扫描、MIDI/SVG 导出 |
+| 节奏插值 | `tools/rhythm-interp-demo.html` + `tools/rhythm-interp-core.js` | 网页：多声部、休止符、拍号、音值组合法、五线谱（abcjs）、MIDI/SVG 导出 |
+| 作曲工具 0.2（原生外壳） | `tools/mac-shell-poc/` | AppKit + WKWebView：侧边栏、独立置顶悬浮面板、真 Liquid Glass、**四工具**切换（⌘1–⌘4） |
 | 两个单工具 .app | `tools/app-source/`、`tools/app-source-interpolation/` | ObjC + WKWebView 的 app 外壳源码与打包脚本 |
+
+## 路线图：通往 1.0
+
+功能清单不是我随手列的，是照着本机装的 **OMTristan 3.5**（菜单 `1-SPECTRAL HARMONY`
+等 7 个一级分组）与 **Esquisse 1.3** 的实际函数表整理的。
+
+| OM 分类 | 代表函数 | 状态 |
+|---|---|---|
+| 振幅调制 / 环形调制 | `rmo` `rm-gen` `ring-mod` | ✅ 0.1 |
+| 频谱插值 | `f-interpol` | ✅ 0.1 |
+| 虚拟基音 | `virtual-fund` `virt-fund-step` | ✅ 0.2 |
+| 节奏插值 | OM 核心 `INTERPOLATION` on dx | ✅ 0.2 |
+| 泛音列生成 | `sp-gen` `n-sp-gen` `HARM-SERIES` `NTH-HARM` | ⬜ |
+| 频率调制 | `fmo` `fm-origin` `fm-ratio` `fm-arp` `FREQ-MOD` | ⬜ |
+| 频率移位 | `fsh` `fs-proc` `FSHIFT` | ⬜ |
+| 失真 | `disto` `dist-gen` `dist-sym` `FDISTOR` | ⬜ |
+| 频谱变换（加密 / 倍增 / 再生） | `f-densifier` `f-multiplier` `proliferer` `ch-mixture` | ⬜ |
+| 和弦变形 | `reharmonizer` `diamanter` | ⬜ |
+| 频谱归属与匹配 | `which-harm` `closest-harm` `match-n-sp` `match-trans` `BEST-FREQ` `HARM-DIST` | ⬜ |
+| 中心 / 相邻频率 | `center-freq` `inter-freq` | ⬜ |
+| 多解虚拟基音 | `virt-fund-multi`（Delerue） | ⬜ |
+| 音高集合运算 | `BEST-TRANSP` `BEST-INV` `ALL-INVERSIONS` `SORT-MOD` | ⬜ |
+| 声码器 | `vocoder` `ch-vocoder` `time-vocoder` | ⬜ |
+| 分析 / 合成接口 | `SPDATA` `Addi-MSP` | ⬜ |
+
+**建议的 1.0 判据**（可检验，不是感觉）：
+
+1. `1-SPECTRAL HARMONY` 的七个二级分类（和声列、频率调制、振幅调制、失真、频率移位、
+   频谱变换、频谱分析）**每一类至少有一个可用实现**；
+2. 频谱分析里的 `virtual-fund` 家族与频率匹配（`match-*`）齐全；
+3. 每个工具都具备同样的四件套：88 键或等价输入、五线谱/图示、试听、MIDI 导出；
+4. 全部工具收进同一个外壳，⌘1–⌘N 切换。
+
+第 3、4 条现在已经做到了，主要缺的是第 1、2 条里的算法。
 
 ## 环境要求
 
@@ -41,11 +80,15 @@
 - `tools/ringmod-demo.html`
 - `tools/interpolation-demo.html`
 
-### 插值核心测试
+### 核心测试
 
 ```sh
-node tools/test-interpolation-core.mjs
+node tools/test-interpolation-core.mjs      # 19 项
+node tools/test-rhythm-interp-core.mjs      # 53 项
+node tools/test-notation-semantics.mjs      # 28 项（abcjs 回读校验）
+node tools/test-virtualfund-core.mjs        # 24 项
 ```
+共 124 项，全绿。
 
 ### 作曲工具（原生外壳）
 
@@ -55,11 +98,12 @@ cd tools/mac-shell-poc
 open "build/作曲工具 PoC.app"
 ```
 
-功能：
+功能（0.2）：
 
-- 侧边栏在「环形调制 / 插值」之间切换，两个 `WKWebView` 常驻，各自状态保留
+- 侧边栏在「环形调制 / 插值 / 虚拟基音 / 节奏插值」之间切换（⌘1–⌘4），
+  四个 `WKWebView` 常驻，各自状态保留
 - 独立 `NSPanel` 悬浮条：真 `NSGlassEffectView`、可置顶、可隐藏、可拖动、位置记忆
-- 读数含音名与频率；插值面板含当前 curve 的曲率图示
+- 悬浮条读数随工具切换；插值与节奏插值面板含当前 curve 的曲率图示
 - Swift ↔ JS 双向桥；导出经 `WKDownload` 落到 `~/Downloads`
 
 ### 两个单工具 .app
@@ -76,11 +120,21 @@ tools/
 ├── ringmod-demo.html                 环形调制计算器（网页）
 ├── interpolation-demo.html           插值计算器（网页）
 ├── interpolation-core.js             插值 / 音名 / MIDI 文件写出核心
-├── test-interpolation-core.mjs       19 项核心测试
-├── README-插值计算器.md               插值计算器说明
+├── virtualfund-demo.html             虚拟基音计算器（网页）
+├── virtualfund-core.js               tolerant-gcd / virtual-fund 核心
+├── rhythm-interp-demo.html           节奏插值（网页，多声部）
+├── rhythm-interp-core.js             节奏插值 / 全局量化记谱核心
+├── vendor/abcjs/                     五线谱渲染（MIT）
+├── test-interpolation-core.mjs       19 项
+├── test-virtualfund-core.mjs         24 项
+├── test-rhythm-interp-core.mjs       53 项
+├── test-notation-semantics.mjs       28 项（abcjs 回读校验）
+├── README-插值计算器.md
+├── README-虚拟基音计算器.md
+├── README-节奏插值.md
 ├── app-source/                       环形调制 .app 外壳（ObjC）
 ├── app-source-interpolation/         插值 .app 外壳（ObjC）
-└── mac-shell-poc/                    作曲工具原生外壳
+└── mac-shell-poc/                    作曲工具 0.2 原生外壳
     ├── main.m                        AppKit 外壳 + 悬浮面板 + 桥
     ├── build-poc.sh                  编译打包脚本
     ├── make-icon.swift               图标绘制

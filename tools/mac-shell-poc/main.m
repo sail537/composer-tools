@@ -3,6 +3,11 @@
 #import <QuartzCore/QuartzCore.h>
 
 static NSString * const kAppTitle = @"作曲工具 PoC";
+/* 版本号：与 Info.plist 的 CFBundleShortVersionString 保持一致。
+   0.2 = 四个工具（环形调制 / 插值 / 虚拟基音 / 节奏插值）；
+   1.0 的判据见 README 的「路线图」。 */
+static NSString * const kAppVersion = @"0.2";
+static NSString * const kAppBuild = @"2";
 static NSString * const kTransportFrameName = @"FloatingTransportPanel";
 
 static void PoCLog(NSString *format, ...) {
@@ -300,12 +305,24 @@ static BOOL POCFlag(NSString *name) {
 
     NSViewController *vc = [[NSViewController alloc] init];
     vc.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 220, 600)];
+
+    /* 侧边栏底部显示版本号 */
+    NSTextField *version = [NSTextField labelWithString:
+        [NSString stringWithFormat:@"版本 %@ (%@)", kAppVersion, kAppBuild]];
+    version.font = [NSFont systemFontOfSize:10.5];
+    version.textColor = NSColor.tertiaryLabelColor;
+    version.translatesAutoresizingMaskIntoConstraints = NO;
+
     [vc.view addSubview:scroll];
+    [vc.view addSubview:version];
     [NSLayoutConstraint activateConstraints:@[
         [scroll.leadingAnchor constraintEqualToAnchor:vc.view.leadingAnchor],
         [scroll.trailingAnchor constraintEqualToAnchor:vc.view.trailingAnchor],
         [scroll.topAnchor constraintEqualToAnchor:vc.view.topAnchor],
-        [scroll.bottomAnchor constraintEqualToAnchor:vc.view.bottomAnchor]
+        [scroll.bottomAnchor constraintEqualToAnchor:version.topAnchor constant:-6.0],
+        [version.leadingAnchor constraintEqualToAnchor:vc.view.leadingAnchor constant:14.0],
+        [version.trailingAnchor constraintLessThanOrEqualToAnchor:vc.view.trailingAnchor constant:-8.0],
+        [version.bottomAnchor constraintEqualToAnchor:vc.view.bottomAnchor constant:-8.0]
     ]];
 
     NSSplitViewItem *item = [NSSplitViewItem sidebarWithViewController:vc];

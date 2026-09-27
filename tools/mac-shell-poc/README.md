@@ -1,4 +1,7 @@
-# 作曲工具 PoC v6（四工具 + 独立置顶面板 + bundle 资源）
+# 作曲工具 0.2（四工具 + 独立置顶面板 + bundle 资源）
+
+版本号同时写在 `Info.plist`（`CFBundleShortVersionString` = 0.2、`CFBundleVersion` = 2）
+和 `main.m` 的 `kAppVersion`，侧边栏底部会显示。发版时两处要一起改。
 
 ## 工具
 
