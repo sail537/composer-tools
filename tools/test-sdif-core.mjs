@@ -308,4 +308,21 @@ if (!existsSync(OM_DIR)) {
   });
 }
 
+
+ok('包络轨道与谱面同宽，可逐列对齐', () => {
+  const cols = [{ time: 0, amp: 1 }, { time: 0.2, amp: 0.4 }, { time: 0.4, amp: 0.1 }];
+  const env = S.renderEnvelopeSVG(cols, { leftPad: 96, colWidth: 70, rightPad: 30 });
+  assert.ok(env.startsWith('<svg') && env.endsWith('</svg>'));
+  assert.ok(!env.includes('NaN'));
+  assert.equal(env.match(/width="(\d+)"/)[1], String(96 + 3 * 70 + 30), '宽度应当与同列数的谱面一致');
+  /* 振幅越大点越大 */
+  const rs = [...env.matchAll(/r="([\d.]+)"/g)].map((m) => +m[1]);
+  assert.ok(rs.length >= 3);
+  assert.ok(rs[0] > rs[1] && rs[1] > rs[2], '点半径应当随振幅递减：' + rs.join(','));
+});
+
+ok('包络轨道空数据不炸', () => {
+  assert.ok(S.renderEnvelopeSVG([], {}).includes('没有数据'));
+});
+
 console.log('\n全部通过：' + passed + ' 项');

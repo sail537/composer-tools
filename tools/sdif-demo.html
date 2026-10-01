@@ -46,6 +46,7 @@
   .status { font-size: 12.5px; color: var(--warn); }
   svg { display: block; width: 100%; height: auto; }
   #staff svg { width: 100%; max-width: 720px; height: auto; margin: 0 auto; }
+  #envelope svg { width: 100%; max-width: 720px; height: auto; margin: -4px auto 0; }
   .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
   .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
@@ -128,8 +129,8 @@
       </div>
       <div class="field">
         <label for="cols">谱面最多显示列数</label>
-        <input type="number" id="cols" value="16" min="2" max="40" step="1">
-        <div class="hint">超出的按时间均匀抽样，否则谱面会长得没边</div>
+        <input type="number" id="cols" value="8" min="2" max="8" step="1">
+        <div class="hint">超出的按时间均匀抽样；谱面与下方包络轨道按列对齐，所以上限 8 列</div>
       </div>
       <div class="field">
         <label for="snap">音高处理</label>
@@ -176,6 +177,7 @@
   <section class="card">
     <h2>4 · 五线谱（音高素材）</h2>
     <div id="staff"></div>
+    <div id="envelope"></div>
     <div class="readout" id="staff-note"></div>
   </section>
 
@@ -331,20 +333,42 @@
     lastStaffSVG = '';
     if (!lastMoments.length) {
       host.innerHTML = '<div class="empty">没有可显示的音高素材（试试降低振幅门限或最低频率）</div>';
+      $('envelope').innerHTML = '';
       $('staff-note').textContent = '';
       return;
     }
     var cols = parseInt($('cols').value, 10) || 16;
     var shown = sampleEvenly(lastMoments, cols);
     var snapMode = $('snap').value;
+    /* 振幅归一化：符头大小与包络曲线共用同一个基准 */
+    var maxAmp = 0;
+    shown.forEach(function (m) { m.amps.forEach(function (a) { if (a > maxAmp) maxAmp = a; }); });
+    maxAmp = maxAmp || 1;
     var chords = shown.map(function (m) {
-      return m.midis.map(function (x) { return snapMode === 'round' ? Math.round(x) : x; });
+      return m.midis.map(function (x, i) {
+        return {
+          midi: snapMode === 'round' ? Math.round(x) : x,
+          amp: m.amps[i] / maxAmp
+        };
+      });
     });
-    lastStaffSVG = I.renderStaffSVG(chords, { perSystem: Math.min(8, shown.length), showCents: true });
+    /* 单行系统：这样谱面和下方包络轨道的列能一一对齐 */
+    lastStaffSVG = I.renderStaffSVG(chords, { perSystem: shown.length, showCents: true });
     host.innerHTML = lastStaffSVG;
+
+    /* 包络轨道：每列的振幅之和＝该时刻的总响度 */
+    var colAmp = shown.map(function (m) {
+      return m.amps.reduce(function (a, b) { return a + b; }, 0);
+    });
+    var maxCol = Math.max.apply(null, colAmp) || 1;
+    $('envelope').innerHTML = S.renderEnvelopeSVG(
+      shown.map(function (m, i) { return { time: m.time, amp: colAmp[i] / maxCol }; }),
+      { dark: isDark(), leftPad: I.GEOM.leftPad, colWidth: I.GEOM.colWidth, rightPad: I.GEOM.rightPad });
+
     $('staff-note').innerHTML = '共 <b>' + lastMoments.length + '</b> 列（每列＝同一时刻的音），'
       + '谱面上画了 <b>' + shown.length + '</b> 列'
-      + (lastMoments.length > shown.length ? '（按时间均匀抽样）' : '');
+      + (lastMoments.length > shown.length ? '（按时间均匀抽样）' : '')
+      + ' · <b>符头大小＝该音振幅</b>，下方曲线＝该时刻所有分音的振幅之和（总响度包络）';
   }
 
   function renderTable() {

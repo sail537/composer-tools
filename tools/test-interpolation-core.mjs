@@ -272,4 +272,20 @@ ok('整数音高自动退回最兼容的单通道写法', () => {
   assert.deepEqual(ons.map(e => e.note), [60, 64, 67]);
 });
 
+
+/* ---------- 符头大小随振幅（包络上谱用） ---------- */
+
+ok('谱面接受 {midi, amp} 并把符头按振幅缩放', () => {
+  const plain = C.renderStaffSVG([[60, 64, 67]], { perSystem: 1 });
+  const sized = C.renderStaffSVG([[{ midi: 60, amp: 0.05 }, { midi: 64, amp: 1 }, { midi: 67, amp: 0.4 }]], { perSystem: 1 });
+  const rx = (svg) => [...svg.matchAll(/rx="([\d.]+)"/g)].map((m) => +m[1]);
+  /* 纯数字写法保持原尺寸 */
+  assert.equal(new Set(rx(plain).map((v) => v.toFixed(2))).size, 1, '旧的纯数字写法应当尺寸一致');
+  /* 带振幅时三种大小各不相同，且振幅大的更大 */
+  const got = rx(sized);
+  assert.equal(new Set(got.map((v) => v.toFixed(2))).size, 3, '三个振幅应当给出三种符头大小');
+  assert.ok(Math.max(...got) > Math.min(...got) * 1.5, '大小差距应当看得见');
+  assert.ok(!sized.includes('NaN'));
+});
+
 console.log('\n全部通过：' + passed + ' 项');

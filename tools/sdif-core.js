@@ -476,6 +476,58 @@
 
   /* ---------- MIDI 导出：音符按绝对时间摆放 ---------- */
 
+  /* 包络轨道：横轴与五线谱共用同一套列几何（leftPad + i·colWidth），
+     所以把它放在谱面正下方就能逐列对齐。columns = [{time, amp}]，amp 已归一化到 0–1。 */
+  function renderEnvelopeSVG(columns, options) {
+    options = options || {};
+    const dark = !!options.dark;
+    const leftPad = options.leftPad == null ? 96 : options.leftPad;
+    const colWidth = options.colWidth == null ? 70 : options.colWidth;
+    const rightPad = options.rightPad == null ? 30 : options.rightPad;
+    const H = options.height || 72;
+    const n = Math.max(1, (columns || []).length);
+    const W = leftPad + n * colWidth + rightPad;
+    const pad = 12;
+    const baseY = H - pad - 10;
+    const topY = pad + 4;
+    const ink = dark ? '#f2f2f7' : '#1c1c1e';
+    const muted = dark ? '#a1a1aa' : '#6b6b70';
+    const axis = dark ? '#48484a' : '#d9d9de';
+    const p = [];
+    p.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H
+      + '" font-family="-apple-system, \'PingFang SC\', Helvetica, Arial, sans-serif">');
+
+    /* 每列的横坐标＝该列符头所在的位置 */
+    const xOf = function (i) { return leftPad + i * colWidth; };
+    p.push('<line x1="' + (leftPad - 14) + '" y1="' + baseY + '" x2="' + (W - rightPad + 6) + '" y2="' + baseY
+      + '" stroke="' + axis + '" stroke-width="1"/>');
+    p.push('<text x="' + (leftPad - 20) + '" y="' + (baseY + 4) + '" font-size="10" fill="' + muted
+      + '" text-anchor="end">振幅</text>');
+
+    if (!columns || !columns.length) {
+      p.push('<text x="' + (W / 2) + '" y="' + (H / 2) + '" font-size="11" fill="' + muted
+        + '" text-anchor="middle">（没有数据）</text></svg>');
+      return p.join('\n');
+    }
+    const pts = columns.map(function (c, i) {
+      const a = Math.min(1, Math.max(0, c.amp || 0));
+      return { x: xOf(i), y: baseY - (baseY - topY) * a, a: a };
+    });
+    /* 折线 + 逐列圆点，点的大小再强调一次振幅 */
+    p.push('<polyline fill="none" stroke="#0a6cff" stroke-width="1.8" stroke-linejoin="round" points="'
+      + pts.map(function (q) { return q.x.toFixed(1) + ',' + q.y.toFixed(1); }).join(' ') + '"/>');
+    pts.forEach(function (q) {
+      p.push('<circle cx="' + q.x.toFixed(1) + '" cy="' + q.y.toFixed(1) + '" r="'
+        + (2.2 + 3.4 * Math.sqrt(q.a)).toFixed(2) + '" fill="#0a6cff" opacity="0.85"/>');
+    });
+    p.push('<text x="' + (leftPad - 20) + '" y="' + (topY + 4) + '" font-size="10" fill="' + muted
+      + '" text-anchor="end">最大</text>');
+    p.push('<text x="' + (W - rightPad + 6) + '" y="' + (H - 2) + '" font-size="10" fill="' + muted
+      + '" text-anchor="end">时间 →</text>');
+    p.push('</svg>');
+    return p.join('\n');
+  }
+
   const MIDI_PPQ = 480;
   const NOTES_PER_WHOLE = 4;
 
@@ -544,6 +596,7 @@
     segmentPeak: segmentPeak,
     SPECTRUM_GEOM: SPECTRUM_GEOM,
     renderSpectrumSVG: renderSpectrumSVG,
+    renderEnvelopeSVG: renderEnvelopeSVG,
     buildNotesMidi: buildNotesMidi
   };
 });

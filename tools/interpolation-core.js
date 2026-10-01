@@ -479,8 +479,12 @@
     const layouts = systems.map(function (sys) {
       const items = sys.chords.map(function (chord, ci) {
         const groups = { treble: [], bass: [] };
-        chord.forEach(function (midi) {
+        chord.forEach(function (item) {
+          /* 允许 {midi, amp} 形式：amp 用来把符头按振幅画大画小，
+             这样包络过程就直接长在五线谱上了。也兼容纯数字的旧写法。 */
+          const midi = (typeof item === 'number') ? item : item.midi;
           const parts = pitchParts(midi, opts);
+          if (typeof item !== 'number' && item.amp != null) parts.amp = item.amp;
           const staff = parts.rounded >= 60 ? 'treble' : 'bass';
           parts.staff = staff;
           parts.diatonic = diatonicIndex(parts.rounded);
@@ -590,7 +594,10 @@
 
           /* 符头 */
           notes.forEach(function (n) {
-            p.push('<ellipse cx="' + n.x.toFixed(1) + '" cy="' + n.y.toFixed(1) + '" rx="5.6" ry="4.2" transform="rotate(-20 ' + n.x.toFixed(1) + ' ' + n.y.toFixed(1) + ')" fill="' + color + '"/>');
+            /* 符头大小随振幅：0 → 0.62 倍，满 → 1.42 倍 */
+            const k = (n.amp == null) ? 1 : (0.62 + 0.80 * Math.sqrt(Math.min(1, Math.max(0, n.amp))));
+            p.push('<ellipse cx="' + n.x.toFixed(1) + '" cy="' + n.y.toFixed(1) + '" rx="' + (5.6 * k).toFixed(2)
+              + '" ry="' + (4.2 * k).toFixed(2) + '" transform="rotate(-20 ' + n.x.toFixed(1) + ' ' + n.y.toFixed(1) + ')" fill="' + color + '"/>');
           });
 
           /* 升降号：同一列里按 y 碰撞向左错开 */
