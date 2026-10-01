@@ -150,6 +150,27 @@
   <section class="card">
     <h2>3 · 频谱</h2>
     <div id="spectrum"></div>
+    <div class="controls" style="margin-top:10px">
+      <button type="button" class="primary" id="play">▶ 回放（加法重合成）</button>
+      <button type="button" id="stop">■ 停止</button>
+      <label class="mono" for="speed">速度</label>
+      <select id="speed">
+        <option value="1">1× 原速</option>
+        <option value="2">2× 慢</option>
+        <option value="4" selected>4× 慢</option>
+        <option value="8">8× 慢</option>
+        <option value="16">16× 慢</option>
+        <option value="32">32× 慢</option>
+      </select>
+      <label class="mono" for="voices">最多声部</label>
+      <input type="number" id="voices" value="32" min="4" max="120" step="4" style="width:78px">
+      <label class="mono" for="vol">音量</label>
+      <input type="range" id="vol" min="0" max="100" value="60" style="width:110px">
+      <span class="status" id="audio-status"></span>
+    </div>
+    <div class="readout">回放是把每个分音当一条正弦波、按时间拉伸后叠加出来的——
+      听到的是分析的**包络过程**本身，不是原音频。慢速时能听清频谱怎么长出来、
+      哪个分音什么时候进、什么时候退。</div>
   </section>
 
   <section class="card">
@@ -359,6 +380,123 @@
   }
 
   /* ---------- 导出 ---------- */
+
+  /* ---------- 慢速回放：加法重合成 ---------- */
+
+  var actx = null, master = null, live = [], rafId = 0, playStart = 0, playScale = 1;
+  var playT0 = 0, playT1 = 1;
+
+  function audio() {
+    if (!actx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+      master = actx.createGain();
+      master.gain.value = (+$('vol').value || 60) / 100;
+      master.connect(actx.destination);
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+
+  function stopPlay() {
+    live.forEach(function (n) { try { n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} });
+    live = [];
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    var line = document.querySelector('#spectrum line.playhead');
+    if (line) line.setAttribute('opacity', '0');
+  }
+
+  /* 播放头：按和 renderSpectrumSVG 相同的几何把时间映射到 x */
+  function tickPlayhead() {
+    var line = document.querySelector('#spectrum line.playhead');
+    if (!line || !actx) return;
+    var g = S.SPECTRUM_GEOM;
+    var elapsed = (actx.currentTime - playStart) / playScale;   /* 换回原时间轴 */
+    var t = playT0 + Math.max(0, elapsed);
+    var frac = playT1 > playT0 ? (t - playT0) / (playT1 - playT0) : 0;
+    if (frac > 1) { stopPlay(); $('audio-status').textContent = '播放结束'; return; }
+    var plotW = g.W - g.left - g.right;
+    var x = g.left + frac * plotW;
+    line.setAttribute('x1', x.toFixed(1));
+    line.setAttribute('x2', x.toFixed(1));
+    line.setAttribute('opacity', '0.9');
+    rafId = requestAnimationFrame(tickPlayhead);
+  }
+
+  function play() {
+    if (!tracks.length) { $('audio-status').textContent = '这个文件没有分音轨迹，无法回放'; return; }
+    var speed = parseFloat($('speed').value) || 1;
+    var maxVoices = Math.max(1, parseInt($('voices').value, 10) || 32);
+    var minAmp = parseFloat($('minamp').value) || 0;
+    var minFreq = parseFloat($('minfreq').value) || 0;
+
+    var segs = S.trackSegments(tracks, {});
+    segs = segs.filter(function (s) {
+      var f = s.points[0].f;
+      return f >= minFreq && S.segmentPeak(s) >= minAmp;
+    });
+    if (!segs.length) { $('audio-status').textContent = '门限太严，没有可发声的分音'; return; }
+    /* 同名次太多会糊，按峰值取前 N 条 */
+    segs.sort(function (a, b) { return S.segmentPeak(b) - S.segmentPeak(a); });
+    segs = segs.slice(0, maxVoices);
+    segs.sort(function (a, b) { return a.start - b.start; });
+
+    audio();
+    stopPlay();
+    var base = actx.currentTime + 0.08;
+    playScale = speed;
+    playStart = base;
+    playT0 = Math.min.apply(null, segs.map(function (s) { return s.start; }));
+    playT1 = Math.max.apply(null, segs.map(function (s) { return s.points[s.points.length - 1].t; }));
+
+    /* 先按时间桶估一下总振幅，避免叠加后削波 */
+    var buckets = new Float64Array(2048);
+    segs.forEach(function (s) {
+      for (let i = 0; i < s.points.length; i++) {
+        const f = (s.points[i].t - playT0) / Math.max(1e-6, playT1 - playT0);
+        buckets[Math.min(2047, Math.max(0, Math.round(f * 2047)))] += s.points[i].a;
+      }
+    });
+    var maxSum = Math.max.apply(null, Array.from(buckets)) || 1;
+    var norm = 0.75 / maxSum;
+    var fade = Math.min(0.05, 0.15 / speed);
+
+    segs.forEach(function (seg) {
+      var osc = actx.createOscillator();
+      osc.type = 'sine';
+      var g = actx.createGain();
+      osc.connect(g); g.connect(master);
+      var t0 = base + (seg.start - playT0) * speed;
+      osc.frequency.setValueAtTime(seg.points[0].f, t0);
+      g.gain.setValueAtTime(0, t0);
+      for (let i = 1; i < seg.points.length; i++) {
+        var p = seg.points[i];
+        var t = base + (p.t - playT0) * speed;
+        osc.frequency.linearRampToValueAtTime(Math.max(1, p.f), t);
+        var target = Math.max(0, p.a * norm);
+        /* 段首给一点淡入，避免爆音 */
+        if (i === 1) g.gain.linearRampToValueAtTime(target, Math.min(t, t0 + fade));
+        else g.gain.linearRampToValueAtTime(target, t);
+      }
+      var tEnd = base + (seg.points[seg.points.length - 1].t - playT0) * speed;
+      osc.start(t0);
+      osc.stop(tEnd + 0.05);
+      live.push(osc, g);
+    });
+    $('audio-status').textContent = '回放中… 共 ' + segs.length + ' 条分音，'
+      + ((playT1 - playT0) * speed).toFixed(1) + ' s（原长 ' + (playT1 - playT0).toFixed(2) + ' s）';
+    rafId = requestAnimationFrame(tickPlayhead);
+    window.setTimeout(function () {
+      if (live.length && $('audio-status').textContent.indexOf('回放中') === 0) {
+        $('audio-status').textContent = '播放结束';
+        stopPlay();
+      }
+    }, ((playT1 - playT0) * speed + 0.4) * 1000);
+  }
+
+  $('play').addEventListener('click', play);
+  $('stop').addEventListener('click', function () { stopPlay(); $('audio-status').textContent = '已停止'; });
+  $('vol').addEventListener('input', function () { if (master) master.gain.value = (+this.value) / 100; });
 
   function download(blob, filename) {
     var url = URL.createObjectURL(blob);

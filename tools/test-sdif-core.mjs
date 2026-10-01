@@ -190,6 +190,55 @@ ok('频率 ↔ MIDI 与音名', () => {
 
 /* ---------- 渲染与导出 ---------- */
 
+console.log('\n慢速回放的数据准备');
+
+ok('轨迹按时间断口切成多段', () => {
+  /* 序号 1 出现两段：0–0.02 与 0.5–0.52，中间空档 0.48 s */
+  const track = {
+    index: 1,
+    times: [0, 0.01, 0.02, 0.5, 0.51, 0.52],
+    freqs: [440, 441, 442, 880, 881, 882],
+    amps: [0.5, 0.5, 0.4, 0.3, 0.3, 0.2]
+  };
+  const segs = S.trackSegments([track], { gapSeconds: 0.03 });
+  assert.equal(segs.length, 2, '应当切成两段');
+  assert.equal(segs[0].index, 1);
+  close(segs[0].start, 0, 1e-9);
+  close(segs[1].start, 0.5, 1e-9);
+  /* 段尾要补一个淡出点（振幅 0） */
+  const tail = segs[0].points[segs[0].points.length - 1];
+  close(tail.a, 0, 1e-9);
+});
+
+ok('段内抽稀：按 stepSeconds 丢点，首尾保留', () => {
+  const n = 100;
+  const track = {
+    index: 2,
+    times: Array.from({ length: n }, (_, i) => i * 0.001),
+    freqs: Array.from({ length: n }, () => 660),
+    amps: Array.from({ length: n }, () => 0.2)
+  };
+  const fine = S.trackSegments([track], { stepSeconds: 0.001 });
+  const coarse = S.trackSegments([track], { stepSeconds: 0.02 });
+  assert.ok(fine[0].points.length > coarse[0].points.length);
+  assert.ok(coarse[0].points.length < 20, '0.02 秒一个点，100 个点应当被抽到 10 个上下');
+  close(coarse[0].points[0].t, 0, 1e-9);
+});
+
+ok('段峰值用于挑选发声声部', () => {
+  const mk = (a) => ({ index: 1, times: [0, 0.01], freqs: [440, 440], amps: [a, a * 0.5] });
+  const segs = S.trackSegments([mk(0.2), mk(0.8)], {});
+  const peaks = segs.map(S.segmentPeak).sort((x, y) => y - x);
+  close(peaks[0], 0.8, 1e-6);
+  close(peaks[1], 0.2, 1e-6);
+});
+
+ok('频谱图带播放头且默认隐藏', () => {
+  const svg = S.renderSpectrumSVG(S.partialTracks(S.parseSDIF(SAMPLE)), {});
+  assert.ok(svg.includes('class="playhead"'), '应当有播放头元素');
+  assert.ok(/class="playhead"[^>]*opacity="0"/.test(svg), '默认应当隐藏');
+});
+
 ok('频谱图可生成且无 NaN', () => {
   const tracks = S.partialTracks(S.parseSDIF(SAMPLE));
   const svg = S.renderSpectrumSVG(tracks, {});

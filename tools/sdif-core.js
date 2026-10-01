@@ -347,10 +347,15 @@
 
   /* ---------- 频谱图：横轴时间、纵轴频率、大小与透明度 = 振幅 ---------- */
 
+  /* 频谱图的画布几何：demo 里的播放头要用同一套数字才能对齐 */
+  const SPECTRUM_GEOM = { W: 940, H: 360, left: 58, right: 16, top: 26, bottom: 38 };
+
   function renderSpectrumSVG(tracks, options) {
     options = options || {};
     const dark = !!options.dark;
-    const W = 940, H = 360, left = 58, right = 16, top = 26, bottom = 38;
+    const W = SPECTRUM_GEOM.W, H = SPECTRUM_GEOM.H;
+    const left = SPECTRUM_GEOM.left, right = SPECTRUM_GEOM.right;
+    const top = SPECTRUM_GEOM.top, bottom = SPECTRUM_GEOM.bottom;
     const bg = dark ? '#1c1c1e' : '#ffffff';
     const ink = dark ? '#f2f2f7' : '#1c1c1e';
     const muted = dark ? '#a1a1aa' : '#6b6b70';
@@ -408,10 +413,65 @@
       p.push('<circle cx="' + xOf(x.t).toFixed(1) + '" cy="' + yOf(x.f).toFixed(1) + '" r="' + r
         + '" fill="#0a6cff" opacity="' + o + '"/>');
     });
+    /* 播放头：默认隐藏，demo 回放时直接改 x1/x2 */
+    p.push('<line class="playhead" x1="' + left + '" y1="' + top + '" x2="' + left + '" y2="' + (top + plotH)
+      + '" stroke="#ff3b30" stroke-width="1.5" opacity="0"/>');
     p.push('<text x="' + left + '" y="16" font-size="12" font-weight="600" fill="' + ink + '">'
       + '频谱（点＝某时刻的一个分音，大小与深浅＝振幅）</text>');
     p.push('</svg>');
     return p.join('\n');
+  }
+
+  /* ---------- 慢速回放用的轨迹分段 ---------- */
+
+  /* 把一条轨迹切成若干段，并在段内抽稀。慢速回放要听的是「包络过程」，
+     所以这里只做数据准备，Web Audio 的调度放在 demo 里。
+
+     为什么要切段：SDIF 里的分音会因为振幅掉到门限以下而中断，
+     按序号累积时中间的空档会被抹掉；不切段就会听到一个拖长的假音。
+     为什么要抽稀：帧间隔只有几毫秒，一秒钟就是几百个自动化点，
+     原样铺给 Web Audio 会卡；抽到 step 秒一个点，听感几乎没差别。 */
+  function trackSegments(tracks, options) {
+    options = options || {};
+    const gap = options.gapSeconds > 0 ? options.gapSeconds : 0.03;
+    const step = options.stepSeconds > 0 ? options.stepSeconds : 0.02;
+    const out = [];
+    tracks.forEach(function (track) {
+      let seg = null;
+      let lastKept = -Infinity;
+      for (let i = 0; i < track.times.length; i++) {
+        const t = track.times[i];
+        const f = track.freqs[i];
+        const a = track.amps[i];
+        if (seg && (t - seg.end) > gap) {
+          /* 时间上断了：给这一段收一个淡出点，然后另起一段 */
+          const last = seg.points[seg.points.length - 1];
+          if (last && last.a > 0) seg.points.push({ t: seg.end, f: last.f, a: 0 });
+          out.push(seg);
+          seg = null;
+        }
+        if (!seg) {
+          seg = { index: track.index, start: t, end: t, points: [{ t: t, f: f, a: a }] };
+          lastKept = t;
+          continue;
+        }
+        seg.end = t;
+        if (t - lastKept >= step) {
+          seg.points.push({ t: t, f: f, a: a });
+          lastKept = t;
+        }
+      }
+      if (seg) {
+        const last = seg.points[seg.points.length - 1];
+        if (last && last.a > 0) seg.points.push({ t: seg.end, f: last.f, a: 0 });
+        out.push(seg);
+      }
+    });
+    return out.filter(function (s) { return s.points.length >= 2; });
+  }
+
+  function segmentPeak(seg) {
+    return seg.points.reduce(function (m, p) { return Math.max(m, p.a); }, 0);
   }
 
   /* ---------- MIDI 导出：音符按绝对时间摆放 ---------- */
@@ -480,6 +540,9 @@
     snapFreq: snapFreq,
     notesToMoments: notesToMoments,
     frameChordsToMoments: frameChordsToMoments,
+    trackSegments: trackSegments,
+    segmentPeak: segmentPeak,
+    SPECTRUM_GEOM: SPECTRUM_GEOM,
     renderSpectrumSVG: renderSpectrumSVG,
     buildNotesMidi: buildNotesMidi
   };
