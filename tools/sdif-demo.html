@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SDIF 读取器 · 频谱→音高素材</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #1c1c1e; --muted: #6b6b70; --line: #d9d9de; --bg: #f6f6f8;
+    --accent: #0a6cff; --accent-soft: #e8f0ff; --warn: #b26a00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 26px 20px 56px; background: var(--bg); color: var(--ink); line-height: 1.5;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 .sub { font-size: 12.5px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+  h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 5px; }
+  input[type=number], input[type=text], select {
+    font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; color: var(--ink);
+  }
+  input[type=number] { width: 96px; }
+  input[type=range] { width: 170px; vertical-align: middle; }
+  button {
+    font: inherit; font-size: 13.5px; padding: 8px 13px; border-radius: 8px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  button:hover { border-color: #b9b9c0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #0a5ede; }
+  .drop {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 26px 18px; text-align: center;
+    color: var(--muted); font-size: 13.5px; cursor: pointer;
+  }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+  .readout { margin-top: 6px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .readout b { color: var(--ink); font-weight: 600; }
+  .status { font-size: 12.5px; color: var(--warn); }
+  svg { display: block; width: 100%; height: auto; }
+  #staff svg { width: 100%; max-width: 720px; height: auto; margin: 0 auto; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+  .mono { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
+  .table-wrap { max-height: 300px; overflow: auto; border: 1px solid #ededf1; border-radius: 8px; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid #ededf1; font-size: 12.5px; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #fafafc; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #f2f2f7; --muted: #a1a1aa; --line: rgba(255,255,255,.16); --bg: #1c1c1e;
+            --accent-soft: rgba(10,108,255,.28); --warn: #ffb340; }
+    body { background: var(--bg); color: var(--ink); }
+    .card { background: #2c2c2e; border-color: var(--line); }
+    input[type=number], input[type=text], select, button { background: #2c2c2e; color: var(--ink); border-color: var(--line); }
+    select option { background: #2c2c2e; color: var(--ink); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .table-wrap { border-color: rgba(255,255,255,.12); }
+    th { background: #2c2c2e; }
+    th, td { border-bottom-color: rgba(255,255,255,.10); }
+    input[type=range] { accent-color: var(--accent); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SDIF 读取器 <span class="sub">把频谱分析结果变成音高素材 · 对齐 OpenMusic 的 sdif-&gt;chord-seq</span></h1>
+
+  <section class="card">
+    <h2>1 · 打开 SDIF 文件</h2>
+    <div class="drop" id="drop">
+      把 <span class="mono">.sdif</span> 文件拖进来，或点击选择<br>
+      <span style="font-size:12px">（SPEAR：分析完 → File ▸ Export As… ▸ SDIF files）</span>
+    </div>
+    <input type="file" id="file" accept=".sdif,application/octet-stream" style="display:none">
+    <div class="readout" id="info"></div>
+  </section>
+
+  <section class="card">
+    <h2>2 · 变成音高素材</h2>
+    <div class="row">
+      <div class="field">
+        <label for="mode">取音方式</label>
+        <select id="mode">
+          <option value="tracks" selected>分音轨迹（每条轨迹一个长音）</option>
+          <option value="frames">帧切片（每个时刻一个和弦）</option>
+          <option value="markers">记号音符（1MRK 起止）</option>
+        </select>
+        <div class="hint">轨迹＝把同一序号跨帧的音串成一条线，取平均音高；
+          切片＝每个分析帧就是一个频谱快照；记号＝1MRK 里带起止的音符。
+          有些文件只有其中一种，程序会自动挑有内容的那个。</div>
+      </div>
+      <div class="field">
+        <label for="minfreq">最低频率 Hz</label>
+        <input type="number" id="minfreq" value="60" min="20" max="8000" step="10">
+        <div class="hint">滤掉低频噪声</div>
+      </div>
+      <div class="field">
+        <label for="minamp">振幅门限 <span class="mono" id="minamp-read">0.02</span></label>
+        <input type="range" id="minamp" min="0" max="0.3" step="0.005" value="0.02">
+        <div class="hint">只保留够响的分音</div>
+      </div>
+      <div class="field">
+        <label for="maxn">最多保留</label>
+        <input type="number" id="maxn" value="24" min="1" max="80" step="1">
+        <div class="hint">按振幅取前 N 个</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="field">
+        <label for="grid">吸附到网格</label>
+        <select id="grid">
+          <option value="0">不吸附</option>
+          <option value="0.25">四分音符（120 BPM）</option>
+          <option value="0.125">八分音符</option>
+          <option value="0.0625">十六分音符</option>
+          <option value="0.01">10 ms</option>
+          <option value="0.05">50 ms</option>
+        </select>
+        <div class="hint">把起点吸到网格，和弦才不会因为几毫秒的差别散开</div>
+      </div>
+      <div class="field">
+        <label for="cols">谱面最多显示列数</label>
+        <input type="number" id="cols" value="16" min="2" max="40" step="1">
+        <div class="hint">超出的按时间均匀抽样，否则谱面会长得没边</div>
+      </div>
+      <div class="field">
+        <label for="snap">音高处理</label>
+        <select id="snap">
+          <option value="raw" selected>保留微分音（谱面标偏差）</option>
+          <option value="round">吸附到最近的半音</option>
+        </select>
+      </div>
+    </div>
+    <div class="controls" style="margin-top:10px">
+      <button type="button" class="primary" id="render">重新计算</button>
+      <button type="button" id="export-midi">导出 MIDI</button>
+      <button type="button" id="export-svg">导出五线谱 SVG</button>
+      <span class="status" id="status"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3 · 频谱</h2>
+    <div id="spectrum"></div>
+  </section>
+
+  <section class="card">
+    <h2>4 · 五线谱（音高素材）</h2>
+    <div id="staff"></div>
+    <div class="readout" id="staff-note"></div>
+  </section>
+
+  <section class="card">
+    <h2>5 · 分音对照表</h2>
+    <div id="table"></div>
+  </section>
+
+  <section class="card">
+    <h2>说明</h2>
+    <div class="readout">
+      读的是 SDIF 里的 <span class="mono">1TRC</span>（正弦轨迹）与
+      <span class="mono">1MRK</span>（起止记号）帧，语义与 OpenMusic 8.0 的
+      <span class="mono">sdif-&gt;chord-seq</span> 一致：1TRC 每行是
+      「序号、频率、振幅、相位」，按序号跨帧累积成分音轨迹；1MRK 由
+      <span class="mono">1BEG / 1TRC / 1END</span> 三个矩阵给出有起止的音。
+      <span class="mono">1NVT</span> 之类的元数据帧会跳过。
+      音高换算用十二平均律，谱面上的 ±音分就是偏离最近半音的量——频谱音乐里的音
+      几乎不会是准的十二平均律音，这个偏差本身就是要看的信息。
+    </div>
+  </section>
+</div>
+
+<script src="interpolation-core.js"></script>
+<script src="sdif-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var I = window.InterpCore;
+  var S = window.SdifCore;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var parsed = null;
+  var tracks = [];
+  var markers = [];
+  var lastMoments = [];
+  var lastStaffSVG = '';
+  var lastNotes = [];
+  var fileName = '';
+
+  function isDark() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  /* ---------- 打开文件 ---------- */
+
+  function loadBuffer(buf, name) {
+    try {
+      parsed = S.parseSDIF(buf);
+      fileName = name || '';
+      tracks = S.partialTracks(parsed);
+      markers = S.markerNotes(parsed);
+      /* 只有一种数据的文件（比如纯 1MRK）自动切到有内容的取音方式 */
+      var want = $('mode').value;
+      if (tracks.length === 0 && markers.length) want = 'markers';
+      else if (tracks.length && want === 'markers') want = 'tracks';
+      $('mode').value = want;
+      var mn = markers;
+      var info = S.summarize(parsed, tracks);
+      var parts = [
+        '<b>' + (name || '') + '</b>',
+        info.frameCount + ' 帧',
+        (info.bytes / 1024).toFixed(0) + ' KB'
+      ];
+      if (info.duration) parts.push('时长 <b>' + info.duration.toFixed(2) + ' s</b>');
+      if (info.frameInterval) parts.push('帧间隔 ' + (info.frameInterval * 1000).toFixed(2) + ' ms');
+      if (info.trackCount) {
+        parts.push('分音轨迹 <b>' + info.trackCount + '</b> 条');
+        parts.push(info.freqLow.toFixed(0) + '–' + info.freqHigh.toFixed(0) + ' Hz');
+      }
+      if (mn.length) parts.push('记号音符 <b>' + mn.length + '</b> 个');
+      parts.push('帧类型 ' + Object.keys(info.types).join('/'));
+      $('info').innerHTML = parts.join(' · ');
+      $('status').textContent = '';
+      render();
+    } catch (err) {
+      $('info').innerHTML = '<span class="status">读取失败：' + err.message + '</span>';
+      parsed = null; tracks = []; markers = [];
+      $('spectrum').innerHTML = ''; $('staff').innerHTML = ''; $('table').innerHTML = '';
+    }
+  }
+
+  function readFile(file) {
+    if (!file) return;
+    var fr = new FileReader();
+    fr.onload = function () { loadBuffer(new Uint8Array(fr.result), file.name); };
+    fr.onerror = function () { $('info').innerHTML = '<span class="status">文件读取失败</span>'; };
+    fr.readAsArrayBuffer(file);
+  }
+
+  $('drop').addEventListener('click', function () { $('file').click(); });
+  $('file').addEventListener('change', function () { readFile(this.files[0]); });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    $('drop').addEventListener(ev, function (e) { e.preventDefault(); this.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    $('drop').addEventListener(ev, function (e) { e.preventDefault(); this.classList.remove('over'); });
+  });
+  $('drop').addEventListener('drop', function (e) {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) readFile(e.dataTransfer.files[0]);
+  });
+
+  /* ---------- 取音与渲染 ---------- */
+
+  function sampleEvenly(list, max) {
+    if (list.length <= max) return list;
+    const out = [];
+    for (let i = 0; i < max; i++) out.push(list[Math.round(i * (list.length - 1) / (max - 1))]);
+    return out;
+  }
+
+  function render() {
+    if (!parsed) return;
+    var grid = parseFloat($('grid').value) || 0;
+    var minFreq = parseFloat($('minfreq').value) || 0;
+    var minAmp = parseFloat($('minamp').value) || 0;
+    var maxN = parseInt($('maxn').value, 10) || 24;
+    var mode = $('mode').value;
+
+    var notes;
+    if (mode === 'markers') {
+      notes = markers.filter(function (n) { return n.freq >= minFreq && n.amp >= minAmp; })
+        .sort(function (a, b) { return b.amp - a.amp; }).slice(0, maxN);
+      lastMoments = S.notesToMoments(notes, { gridSeconds: grid });
+    } else if (mode === 'frames') {
+      var chords = S.frameChords(parsed, { minAmp: minAmp, maxPerChord: maxN });
+      lastMoments = S.frameChordsToMoments(chords).filter(function (m) {
+        return m.freqs.some(function (f) { return f >= minFreq; });
+      });
+      notes = [];
+      lastMoments.forEach(function (m) {
+        m.freqs.forEach(function (f, i) {
+          if (f < minFreq) return;
+          notes.push({ freq: f, onset: m.time, dur: 0.05, amp: m.amps[i], index: m.indexes[i] });
+        });
+      });
+    } else {
+      var kept = tracks.filter(function (t) { return t.maxAmp >= minAmp; });
+      kept = kept.sort(function (a, b) { return b.maxAmp - a.maxAmp; }).slice(0, maxN);
+      notes = S.tracksToNotes(kept, {}).filter(function (n) { return n.freq >= minFreq; });
+      lastMoments = S.notesToMoments(notes, { gridSeconds: grid });
+    }
+    lastNotes = notes;
+
+    $('spectrum').innerHTML = S.renderSpectrumSVG(tracks, { dark: isDark(), freqLow: minFreq });
+    renderStaff();
+    renderTable();
+  }
+
+  function renderStaff() {
+    var host = $('staff');
+    host.innerHTML = '';
+    lastStaffSVG = '';
+    if (!lastMoments.length) {
+      host.innerHTML = '<div class="empty">没有可显示的音高素材（试试降低振幅门限或最低频率）</div>';
+      $('staff-note').textContent = '';
+      return;
+    }
+    var cols = parseInt($('cols').value, 10) || 16;
+    var shown = sampleEvenly(lastMoments, cols);
+    var snapMode = $('snap').value;
+    var chords = shown.map(function (m) {
+      return m.midis.map(function (x) { return snapMode === 'round' ? Math.round(x) : x; });
+    });
+    lastStaffSVG = I.renderStaffSVG(chords, { perSystem: Math.min(8, shown.length), showCents: true });
+    host.innerHTML = lastStaffSVG;
+    $('staff-note').innerHTML = '共 <b>' + lastMoments.length + '</b> 列（每列＝同一时刻的音），'
+      + '谱面上画了 <b>' + shown.length + '</b> 列'
+      + (lastMoments.length > shown.length ? '（按时间均匀抽样）' : '');
+  }
+
+  function renderTable() {
+    var host = $('table');
+    host.innerHTML = '';
+    if (!lastNotes.length) { host.innerHTML = '<div class="empty">（无）</div>'; return; }
+    var list = lastNotes.slice().sort(function (a, b) { return b.amp - a.amp; });
+    var wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    var t = document.createElement('table');
+    t.innerHTML = '<thead><tr><th>#</th><th>分音序号</th><th>频率 Hz</th><th>音名</th>'
+      + '<th>偏差</th><th>起点 s</th><th>时长 s</th><th>振幅</th></tr></thead>';
+    var tb = document.createElement('tbody');
+    list.slice(0, 200).forEach(function (n, i) {
+      var snap = S.snapFreq(n.freq);
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + n.index + '</td>'
+        + '<td>' + n.freq.toFixed(2) + '</td><td>' + snap.name + '</td>'
+        + '<td>' + (Math.abs(snap.cents) < 1 ? '精确' : (snap.cents > 0 ? '+' : '−') + Math.abs(snap.cents).toFixed(0) + '¢') + '</td>'
+        + '<td>' + n.onset.toFixed(3) + '</td><td>' + n.dur.toFixed(3) + '</td>'
+        + '<td>' + n.amp.toFixed(4) + '</td>';
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    wrap.appendChild(t);
+    host.appendChild(wrap);
+    if (list.length > 200) {
+      var more = document.createElement('div');
+      more.className = 'readout';
+      more.textContent = '（只列出振幅最大的 200 个，共 ' + list.length + '）';
+      host.appendChild(more);
+    }
+  }
+
+  /* ---------- 导出 ---------- */
+
+  function download(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  $('export-midi').addEventListener('click', function () {
+    if (!lastNotes.length) { $('status').textContent = '先打开文件并算出音高素材'; return; }
+    var out = S.buildNotesMidi(lastNotes, { bpm: 120 });
+    var base = (fileName || 'sdif').replace(/\.sdif$/i, '');
+    download(new Blob([out.bytes], { type: 'audio/midi' }), base + '-sdif.mid');
+    $('status').textContent = '已导出 ' + out.eventCount + ' 个音';
+  });
+
+  $('export-svg').addEventListener('click', function () {
+    if (!lastStaffSVG) { $('status').textContent = '还没有可导出的五线谱'; return; }
+    var base = (fileName || 'sdif').replace(/\.sdif$/i, '');
+    download(new Blob([lastStaffSVG], { type: 'image/svg+xml' }), base + '-staff.svg');
+    $('status').textContent = '已导出五线谱 SVG';
+  });
+
+  /* ---------- 事件 ---------- */
+
+  $('render').addEventListener('click', render);
+  ['mode', 'minfreq', 'maxn', 'grid', 'cols', 'snap'].forEach(function (id) {
+    $(id).addEventListener('change', render);
+  });
+  $('minamp').addEventListener('input', function () {
+    $('minamp-read').textContent = (+this.value).toFixed(3);
+    render();
+  });
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+      if (parsed) render();
+    });
+  }
+
+  /* 供自动化使用 */
+  window.SdifDemo = {
+    loadBuffer: loadBuffer,
+    render: render,
+    result: function () { return { tracks: tracks, notes: lastNotes, moments: lastMoments }; }
+  };
+})();
+</script>
+</body>
+</html>

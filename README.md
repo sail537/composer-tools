@@ -28,6 +28,7 @@
 | 插值计算器 | `tools/interpolation-demo.html` + `tools/interpolation-core.js` | 网页：与 OM 同构的插值、88 键输入、五线谱、曲线预览、MIDI 导出（含微分音） |
 | 虚拟基音计算器 | `tools/virtualfund-demo.html` + `tools/virtualfund-core.js` | 网页：移植 OM 的 `tolerant-gcd` / `virtual-fund`，虚基音、泛音序号对照表、精度扫描、MIDI/SVG 导出 |
 | 节奏插值 | `tools/rhythm-interp-demo.html` + `tools/rhythm-interp-core.js` | 网页：多声部、休止符、拍号、音值组合法、五线谱（abcjs）、MIDI/SVG 导出 |
+| SDIF 读取器（独立 demo） | `tools/sdif-demo.html` + `tools/sdif-core.js` | 网页：读 SPEAR/AudioSculpt 导出的 `.sdif` 频谱分析，画频谱图、转成音高素材上五线谱、导出 MIDI/SVG |
 | 算法作曲工具集 0.2（原生外壳） | `tools/app-shell/` | AppKit + WKWebView：侧边栏、独立置顶悬浮面板、真 Liquid Glass、**四工具**切换（⌘1–⌘4） |
 | 两个单工具 .app | `tools/app-source/`、`tools/app-source-interpolation/` | ObjC + WKWebView 的 app 外壳源码与打包脚本 |
 
@@ -42,6 +43,7 @@
 | 频谱插值 | `f-interpol` | ✅ 0.1 |
 | 虚拟基音 | `virtual-fund` `virt-fund-step` | ✅ 0.2 |
 | 节奏插值 | OM 核心 `INTERPOLATION` on dx | ✅ 0.2 |
+| SDIF 频谱导入 | `sdif->chord-seq` `GetSDIFChords`（1TRC / 1MRK） | 🚧 独立 demo |
 | 泛音列生成 | `sp-gen` `n-sp-gen` `HARM-SERIES` `NTH-HARM` | ⬜ |
 | 频率调制 | `fmo` `fm-origin` `fm-ratio` `fm-arp` `FREQ-MOD` | ⬜ |
 | 频率移位 | `fsh` `fs-proc` `FSHIFT` | ⬜ |
@@ -87,8 +89,9 @@ node tools/test-interpolation-core.mjs      # 19 项
 node tools/test-rhythm-interp-core.mjs      # 53 项
 node tools/test-notation-semantics.mjs      # 28 项（abcjs 回读校验）
 node tools/test-virtualfund-core.mjs        # 24 项
+node tools/test-sdif-core.mjs               # 18 项（含 OM 样例交叉验证）
 ```
-共 124 项，全绿。
+共 142 项，全绿。
 
 ### 算法作曲工具集（原生外壳）
 
@@ -124,11 +127,14 @@ tools/
 ├── virtualfund-core.js               tolerant-gcd / virtual-fund 核心
 ├── rhythm-interp-demo.html           节奏插值（网页，多声部）
 ├── rhythm-interp-core.js             节奏插值 / 全局量化记谱核心
+├── sdif-demo.html                    SDIF 读取器（独立 demo）
+├── sdif-core.js                      SDIF 解析 / 分音轨迹 / 频谱图 / MIDI
 ├── vendor/abcjs/                     五线谱渲染（MIT）
 ├── test-interpolation-core.mjs       19 项
 ├── test-virtualfund-core.mjs         24 项
 ├── test-rhythm-interp-core.mjs       53 项
 ├── test-notation-semantics.mjs       28 项（abcjs 回读校验）
+├── test-sdif-core.mjs                18 项（含 OM 样例交叉验证）
 ├── README-插值计算器.md
 ├── README-虚拟基音计算器.md
 ├── README-节奏插值.md
